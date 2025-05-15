@@ -149,12 +149,13 @@ class Task:
                 continue
             w = orig.clone()
             w.attr = attr
-            # special‐case energy carriers
+            # special‐case carrier quanta
             if attr is GRAVITON:
+                # gravitons carry zero energy
                 w.energy = 0.0
             elif attr is PHOTON:
-                emit_dE = self.outputs[0][1]
-                w.energy = orig.energy + emit_dE
+                # photons carry the emitter’s residual energy
+                w.energy = orig.energy
             else:
                 w.energy = orig.energy + dE
             w.charge = orig.charge + dQ
@@ -614,18 +615,35 @@ class QuantumGravityConstructor(Constructor):
 
 
 class PhotonEmissionTask(Task):
-    def __init__(self, source_attr: Attribute, emission_energy: float = 1.0):
+    def __init__(
+        self,
+        source_attr: Attribute,
+        emission_energy: float = 1.0,
+        carry_residual: bool = False
+    ):
+        """
+        emission_energy > 0: amount lost by emitter.
+        carry_residual: if True, photon.energy = pre-emission energy;
+                        else photon.energy = orig.energy + (–emission_energy).
+        """
         super().__init__(
-            "emit_photon",
-            source_attr,
+            "emit_photon", source_attr,
             [(source_attr, -emission_energy, 0), (PHOTON, 0, 0)],
-            quantum=True,
-            irreversible=True,
-            clock_inc=1,
-            action_cost=emission_energy,
+            quantum=True, irreversible=True, clock_inc=1, action_cost=emission_energy
         )
+        self.carry_residual = carry_residual
 
-
+    def apply(self, s: Substrate) -> List[Substrate]:
+        worlds = super().apply(s)
+        for w in worlds:
+            if w.attr is PHOTON:
+                if self.carry_residual:
+                    # carry the emitter’s pre-emission energy
+                    w.energy = s.energy
+                else:
+                    # residual = orig.energy + (–emission_energy)
+                    w.energy = s.energy + self.outputs[0][1]
+        return worlds
 class PhotonAbsorptionTask(Task):
     def __init__(self, target_attr: Attribute, absorption_energy: float = 1.0):
         super().__init__(

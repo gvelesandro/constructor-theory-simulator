@@ -30,7 +30,7 @@ def main():
     ΔE_gr = 3.0  # graviton energy
 
     program = [
-        PhotonEmissionTask(ELEC, emission_energy=ΔE_ph),
+        PhotonEmissionTask(ELEC, emission_energy=ΔE_ph, carry_residual=True),
         PhotonAbsorptionTask(ELEC, absorption_energy=ΔE_ph),
         GravitonEmissionTask(MASS, emission_energy=ΔE_gr),
         GravitonAbsorptionTask(MASS, absorption_energy=ΔE_gr),
@@ -45,7 +45,8 @@ def main():
     m0 = Substrate("m0", MASS, energy=10.0)
     branches = mega.perform(m0)
     print("Branches after emission:")
-    print(ascii_branch(branches))
+    for w in branches:
+        print(" ", w)  # calls w.__repr__(), includes energy, clock, etc.
     # pick out the graviton branch, then absorb
     graviton = next(w for w in branches if w.attr.label == "graviton")
     restored = mega.perform(graviton)[0]
@@ -55,16 +56,18 @@ def main():
     time.sleep(0.5)
 
     # 4) And now electromagnetism on a “charge_site”:
-    print("=== Photon demo via universal constructor ===")
+    print("=== Photon demo via EMConstructor (pure EM) ===")
     e0 = Substrate("e0", ELEC, energy=20.0)
-    branches = mega.perform(e0)
+    from ct_framework import EMConstructor
+    em_cons = EMConstructor(ELEC, ΔE_ph)
+    branches = em_cons.perform(e0)
     print("Branches after emission:")
-    print(ascii_branch(branches))
+    for w in branches:
+        print(" ", w)
     photon = next(w for w in branches if w.attr.label == "photon")
-    restored = mega.perform(photon)[0]
+    restored = em_cons.perform(photon)[0]
     print("After absorption: ", restored)
     print()
-
     time.sleep(0.5)
 
     # 5) Finally, show that you can interleave them at will:
@@ -78,7 +81,8 @@ def main():
     m_res.attr = ELEC
     print("Now EM‐branch on same residual:")
     em_br = mega.perform(m_res)
-    print(ascii_branch(em_br))
+    for w in em_br:
+        print(" ", w)
     print("\nDone.")
 
 
