@@ -1,8 +1,15 @@
 """
 ct_framework.py  ·  Constructor-Theory mini-framework
-Includes: core constructors, continuous dynamics, quantum gravity,
-           electromagnetism (photons & Coulomb), Lorentz‐force, and more.
-May 2025
+May 2025 · Includes:
+  • Core Task/Constructor, NullConstructor
+  • Timer/Clock Constructors
+  • Fungible Swap + ASCII visualization
+  • 1D & 2D Continuous dynamics + multiple integrators
+  • Multi-substrate coupling (gravitation, Coulomb, Lorentz)
+  • Quantum branching: decoherence, Mach–Zehnder
+  • Quantum-Gravity: graviton emission & absorption
+  • Electromagnetism: photon emission & absorption
+  • UniversalConstructor bootstrap support
 """
 
 import math
@@ -86,10 +93,12 @@ class Substrate:
         )
 
 
-# ── 2. Task & Constructor ────────────────────────────────────────────────
-
+# quantum‐carrier attributes
 GRAVITON = Attribute("graviton")
 PHOTON = Attribute("photon")
+
+
+# ── 2. Task & Constructor ────────────────────────────────────────────────
 
 
 class Task:
@@ -123,12 +132,9 @@ class Task:
     def apply(self, s: Substrate) -> List[Substrate]:
         if not self.possible(s):
             return []
-        # simulate time delay
         time.sleep(min(s.adjusted_duration(self.duration), 0.004))
-
         orig = s.clone()
-
-        # classical irreversible: mutate real substrate
+        # mutate real substrate for classical irreversible tasks
         if self.irreversible and not self.quantum:
             out_attr, dE, dQ = self.outputs[0]
             s.evolve_to(out_attr)
@@ -139,39 +145,25 @@ class Task:
 
         worlds: List[Substrate] = []
         for attr, dE, dQ in self.outputs:
-            # energy‐check on original
             if orig.energy + dE < 0:
                 continue
-
             w = orig.clone()
             w.attr = attr
-
-            # special‐case energies:
-            #  - graviton = 0.0
-            #  - photon  = orig.energy + emission_energy
-            #  - others  = orig.energy + dE
+            # special‐case energy carriers
             if attr is GRAVITON:
                 w.energy = 0.0
             elif attr is PHOTON:
-                # emission_energy is outputs[0][1]
-                dE_emit = self.outputs[0][1]
-                w.energy = orig.energy + dE_emit
+                emit_dE = self.outputs[0][1]
+                w.energy = orig.energy + emit_dE
             else:
                 w.energy = orig.energy + dE
-
             w.charge = orig.charge + dQ
             w.clock = orig.clock + self.clock_inc
-
-            # lock worlds for classical irreversible tasks
             if self.irreversible and not self.quantum:
                 w._locked = True
-
-            # propagate entanglement for quantum tasks
             if self.quantum:
                 w.entangled_with = orig.entangled_with
-
             worlds.append(w)
-
         return worlds
 
 
@@ -386,7 +378,7 @@ class SymplecticEulerTask(Task):
         return [w]
 
 
-# ── 7. Multi-substrate Tasks & 1D coupling ──────────────────────────────
+# ── 7. Multi-substrate Tasks & coupling ────────────────────────────────
 
 
 class MultiSubstrateTask:
@@ -618,7 +610,7 @@ class QuantumGravityConstructor(Constructor):
         super().__init__([emit, absorb])
 
 
-# ── 10. Electromagnetism: photon tasks & Coulomb coupling ────────────────
+# ── 10. Electromagnetism & Coulomb coupling ──────────────────────────────
 
 
 class PhotonEmissionTask(Task):
@@ -702,12 +694,13 @@ def lorentz_coupling_fn(subs: List[Substrate]) -> List[List[Substrate]]:
     return [[p_new, f_new]]
 
 
+# ── 12. Universal Constructor ────────────────────────────────────────────
+
+
 class UniversalConstructor:
     """
-    Given a “program”—i.e. a list of Task objects—this builds a brand‐new
-    Constructor implementing exactly those tasks.
+    Builds a new Constructor from a list of Task objects at runtime.
     """
 
     def build(self, program: List[Task]) -> Constructor:
-        # Simply delegates to our existing Constructor class
         return Constructor(program)
