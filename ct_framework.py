@@ -1,6 +1,9 @@
-# ct_framework.py  ·  Constructor-Theory mini-framework
-# Includes: core constructors, continuous dynamics, quantum gravity,
-# electromagnetism (photons & Coulomb), Lorentz‐force, and more.
+"""
+ct_framework.py  ·  Constructor-Theory mini-framework
+Includes: core constructors, continuous dynamics, quantum gravity,
+           electromagnetism (photons & Coulomb), Lorentz‐force, and more.
+May 2025
+"""
 
 import math
 import time
@@ -85,6 +88,9 @@ class Substrate:
 
 # ── 2. Task & Constructor ────────────────────────────────────────────────
 
+GRAVITON = Attribute("graviton")
+PHOTON = Attribute("photon")
+
 
 class Task:
     def __init__(
@@ -119,7 +125,9 @@ class Task:
             return []
         # simulate time delay
         time.sleep(min(s.adjusted_duration(self.duration), 0.004))
+
         orig = s.clone()
+
         # classical irreversible: mutate real substrate
         if self.irreversible and not self.quantum:
             out_attr, dE, dQ = self.outputs[0]
@@ -128,29 +136,42 @@ class Task:
             s.charge += dQ
             s.clock += self.clock_inc
             s._locked = True
+
         worlds: List[Substrate] = []
         for attr, dE, dQ in self.outputs:
+            # energy‐check on original
             if orig.energy + dE < 0:
                 continue
+
             w = orig.clone()
             w.attr = attr
-            # special‐case energies
+
+            # special‐case energies:
+            #  - graviton = 0.0
+            #  - photon  = orig.energy + emission_energy
+            #  - others  = orig.energy + dE
             if attr is GRAVITON:
                 w.energy = 0.0
             elif attr is PHOTON:
-                # photon carries residual emitter energy
                 # emission_energy is outputs[0][1]
                 dE_emit = self.outputs[0][1]
                 w.energy = orig.energy + dE_emit
             else:
                 w.energy = orig.energy + dE
+
             w.charge = orig.charge + dQ
             w.clock = orig.clock + self.clock_inc
+
+            # lock worlds for classical irreversible tasks
             if self.irreversible and not self.quantum:
                 w._locked = True
+
+            # propagate entanglement for quantum tasks
             if self.quantum:
                 w.entangled_with = orig.entangled_with
+
             worlds.append(w)
+
         return worlds
 
 
@@ -175,7 +196,6 @@ class Constructor:
 class ActionConstructor(Constructor):
     def __init__(self, tasks: List[Task]):
         super().__init__(tasks)
-        # keep only the least-action task per input
         self.tasks_by_input = {
             label: [min(ts, key=lambda t: t.action_cost)]
             for label, ts in self.tasks_by_input.items()
@@ -190,7 +210,7 @@ class NullConstructor(Constructor):
         return [s]
 
 
-# ── 3. Timer & Clock ────────────────────────────────────────────────────
+# ── 3. Timer & Clock Constructors ───────────────────────────────────────
 
 
 class TimerSubstrate(Substrate):
@@ -225,7 +245,7 @@ class ClockConstructor:
         return [s]
 
 
-# ── 4. Fungible swap & ASCII ─────────────────────────────────────────────
+# ── 4. Fungible swap & ASCII visualiser ─────────────────────────────────
 
 
 class SwapConstructor:
@@ -366,7 +386,7 @@ class SymplecticEulerTask(Task):
         return [w]
 
 
-# ── 7. Multi‐substrate Tasks & 1D coupling ──────────────────────────────
+# ── 7. Multi-substrate Tasks & 1D coupling ──────────────────────────────
 
 
 class MultiSubstrateTask:
@@ -562,9 +582,7 @@ class SymplecticEuler2DTask(Task):
         return [w]
 
 
-# ── 9. Quantum Gravity ──────────────────────────────────────────────────
-
-GRAVITON = Attribute("graviton")
+# ── 9. Quantum-Gravity Constructors ─────────────────────────────────────
 
 
 class GravitonEmissionTask(Task):
@@ -600,9 +618,7 @@ class QuantumGravityConstructor(Constructor):
         super().__init__([emit, absorb])
 
 
-# ── 10. Electromagnetism ─────────────────────────────────────────────────
-
-PHOTON = Attribute("photon")
+# ── 10. Electromagnetism: photon tasks & Coulomb coupling ────────────────
 
 
 class PhotonEmissionTask(Task):
@@ -654,7 +670,7 @@ def coulomb_coupling_fn(subs: List[Substrate]) -> List[List[Substrate]]:
     return [[s1n, s2n]]
 
 
-# ── 11. Lorentz‐Force (2D) ───────────────────────────────────────────────
+# ── 11. Lorentz‐Force Coupling (2D) ─────────────────────────────────────
 
 
 class FieldSubstrate(Substrate):
