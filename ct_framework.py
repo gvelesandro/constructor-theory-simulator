@@ -1,13 +1,13 @@
 """
 ct_framework.py  ·  Constructor-Theory mini-framework
 All prior features + 2D continuous substrates & integrators
+Includes corrections for irreversible guards and graviton tasks
 May 2025
 """
 
 import math
 import time
 from typing import List, Tuple, Dict, Optional, Callable
-import matplotlib.pyplot as plt
 
 # ── 1. Core datatypes ───────────────────────────────────────────────────
 
@@ -86,7 +86,7 @@ class Substrate:
         )
 
 
-# ── 2. Task & Constructors ───────────────────────────────────────────────
+# ── 2. Task & Constructor ────────────────────────────────────────────────
 
 
 class Task:
@@ -101,9 +101,13 @@ class Task:
         clock_inc: int = 0,
         action_cost: float = 0.0,
     ):
-        self.name, self.input_attr, self.outputs = name, input_attr, outputs
-        self.duration, self.quantum = duration, quantum
-        self.irreversible, self.clock_inc = irreversible, clock_inc
+        self.name = name
+        self.input_attr = input_attr
+        self.outputs = outputs
+        self.duration = duration
+        self.quantum = quantum
+        self.irreversible = irreversible
+        self.clock_inc = clock_inc
         self.action_cost = action_cost
 
     def possible(self, s: Substrate) -> bool:
@@ -117,26 +121,34 @@ class Task:
         if not self.possible(s):
             return []
         time.sleep(min(s.adjusted_duration(self.duration), 0.004))
-
-        if self.irreversible:
+        orig = s.clone()
+        # mutate real substrate for classical irreversible tasks only
+        if self.irreversible and not self.quantum:
             out_attr, dE, dQ = self.outputs[0]
             s.evolve_to(out_attr)
             s.energy += dE
             s.charge += dQ
             s.clock += self.clock_inc
             s._locked = True
-
         worlds: List[Substrate] = []
+        from ct_framework import GRAVITON
+
         for attr, dE, dQ in self.outputs:
-            if s.energy + dE < 0:
+            if orig.energy + dE < 0:
                 continue
-            w = s.clone()
-            w.attr, w.energy, w.charge = attr, w.energy + dE, w.charge + dQ
-            w.clock += self.clock_inc
-            if self.irreversible:
+            w = orig.clone()
+            w.attr = attr
+            if attr is GRAVITON:
+                w.energy = 0.0
+            else:
+                w.energy = orig.energy + dE
+            w.charge = orig.charge + dQ
+            w.clock = orig.clock + self.clock_inc
+            # lock worlds from classical irreversible tasks
+            if self.irreversible and not self.quantum:
                 w._locked = True
             if self.quantum:
-                w.entangled_with = s.entangled_with
+                w.entangled_with = orig.entangled_with
             worlds.append(w)
         return worlds
 
@@ -162,7 +174,6 @@ class Constructor:
 class ActionConstructor(Constructor):
     def __init__(self, tasks: List[Task]):
         super().__init__(tasks)
-        # keep only lowest-action per input
         self.tasks_by_input = {
             label: [min(ts, key=lambda t: t.action_cost)]
             for label, ts in self.tasks_by_input.items()
@@ -303,9 +314,7 @@ class DynamicsTask(Task):
         p_new = s.p + force * s.dt
         x_new = s.x + (p_new / s.mass) * s.dt
         w = s.clone()
-        w.p = p_new
-        w.x = x_new
-        w.clock += 1
+        w.p, w.x, w.clock = p_new, x_new, w.clock + 1
         return [w]
 
 
@@ -330,9 +339,7 @@ class RK4Task(Task):
         x_new = s.x + (k1x + 2 * k2x + 2 * k3x + k4x) * dt / 6
         p_new = s.p + (k1p + 2 * k2p + 2 * k3p + k4p) * dt / 6
         w = s.clone()
-        w.x = x_new
-        w.p = p_new
-        w.clock += 1
+        w.x, w.p, w.clock = x_new, p_new, w.clock + 1
         return [w]
 
 
@@ -353,9 +360,7 @@ class SymplecticEulerTask(Task):
         p_new = s.p + force * dt
         x_new = s.x + (p_new / s.mass) * dt
         w = s.clone()
-        w.p = p_new
-        w.x = x_new
-        w.clock += 1
+        w.p, w.x, w.clock = p_new, x_new, w.clock + 1
         return [w]
 
 
@@ -396,14 +401,13 @@ class MultiConstructor:
 
 
 def grav_coupling_fn(subs: List[Substrate]) -> List[List[Substrate]]:
-    # 1D two-body impulse
     s1, s2 = subs
     G = 6.67430e-11
     r = abs(s2.x - s1.x)
-    F = G * s1.mass * s2.mass / r**2 if r != 0 else 0
+    F = G * s1.mass * s2.mass / r**2 if r else 0
     s1n, s2n = s1.clone(), s2.clone()
     dt = s1.dt
-    dir12 = (s2.x - s1.x) / r if r != 0 else 1.0
+    dir12 = (s2.x - s1.x) / r if r else 1.0
     s1n.p += F * dir12 * dt
     s2n.p -= F * dir12 * dt
     s1n.clock += 1
@@ -521,12 +525,10 @@ class RK42DTask(Task):
         k4x, k4y, k4px, k4py = deriv(
             s.x + k3x * dt, s.y + k3y * dt, s.px + k3px * dt, s.py + k3py * dt
         )
-
         x_new = s.x + (k1x + 2 * k2x + 2 * k3x + k4x) * dt / 6
         y_new = s.y + (k1y + 2 * k2y + 2 * k3y + k4y) * dt / 6
         px_new = s.px + (k1px + 2 * k2px + 2 * k3px + k4px) * dt / 6
         py_new = s.py + (k1py + 2 * k2py + 2 * k3py + k4py) * dt / 6
-
         w = s.clone()
         w.x, w.y, w.px, w.py = x_new, y_new, px_new, py_new
         w.clock += 1
@@ -556,3 +558,43 @@ class SymplecticEuler2DTask(Task):
         w.px, w.py, w.x, w.y = px_new, py_new, x_new, y_new
         w.clock += 1
         return [w]
+
+
+# ── 9. Quantum-Gravity Constructors ──────────────────────────────────────
+
+GRAVITON = Attribute("graviton")
+
+
+class GravitonEmissionTask(Task):
+    def __init__(self, mass_attr: Attribute, emission_energy: float = 1.0):
+        super().__init__(
+            name="emit_graviton",
+            input_attr=mass_attr,
+            outputs=[(mass_attr, -emission_energy, 0), (GRAVITON, 0, 0)],
+            duration=0.0,
+            quantum=True,
+            irreversible=True,
+            clock_inc=1,
+            action_cost=emission_energy,
+        )
+
+
+class GravitonAbsorptionTask(Task):
+    def __init__(self, mass_attr: Attribute, absorption_energy: float = 1.0):
+        super().__init__(
+            name="absorb_graviton",
+            input_attr=GRAVITON,
+            outputs=[(mass_attr, absorption_energy, 0)],
+            duration=0.0,
+            quantum=True,
+            irreversible=False,
+            clock_inc=1,
+            action_cost=absorption_energy,
+        )
+
+
+class QuantumGravityConstructor(Constructor):
+    def __init__(self, mass_attr: Attribute, ΔE: float = 1.0):
+        emit = GravitonEmissionTask(mass_attr, emission_energy=ΔE)
+        absorb = GravitonAbsorptionTask(mass_attr, absorption_energy=ΔE)
+        super().__init__([emit, absorb])

@@ -15,7 +15,6 @@ class TestCTFramework(unittest.TestCase):
         self.up, self.down = A("up"), A("down")
         self.entangled = A("ent")
 
-        # single-substrate tasks
         excite = ctf.Task(
             "excite", self.g, [(self.e, -1, 0)], duration=0.001, clock_inc=1
         )
@@ -97,8 +96,7 @@ class TestCTFramework(unittest.TestCase):
 
     # 10. special relativity
     def test_special_relativity(self):
-        c = 299_792_458
-        β = 0.6
+        c, β = 299_792_458, 0.6
         γ = 1 / math.sqrt(1 - β**2)
         fast = ctf.Substrate("μ", self.g, 1, velocity=β * c)
         self.assertAlmostEqual(fast.adjusted_duration(0.02), 0.02 / γ, places=7)
@@ -191,8 +189,7 @@ class TestCTFramework(unittest.TestCase):
             "grav", [cs1.attr, cs2.attr], ctf.grav_coupling_fn
         )
         mc = ctf.MultiConstructor([task])
-        out = mc.perform([cs1, cs2])[0]
-        m1n, m2n = out
+        m1n, m2n = mc.perform([cs1, cs2])[0]
         self.assertNotEqual(m1n.p, cs1.p)
         self.assertNotEqual(m2n.p, cs2.p)
 
@@ -250,7 +247,7 @@ class TestCTFramework(unittest.TestCase):
     def test_dynamics2d_task(self):
         fn = lambda x, y: x + y
         cs2 = ctf.ContinuousSubstrate2D(
-            "d2", 1.0, 2.0, px=0.0, py=0.0, mass=1.0, potential_fn=fn, dt=1.0
+            "d2", x=1.0, y=2.0, px=0.0, py=0.0, mass=1.0, potential_fn=fn, dt=1.0
         )
         w = ctf.Dynamics2DTask().apply(cs2)[0]
         self.assertAlmostEqual(w.px, -1.0, places=5)
@@ -262,7 +259,7 @@ class TestCTFramework(unittest.TestCase):
     def test_rk42d_task_constant(self):
         fn = lambda x, y: 0.0
         cs2 = ctf.ContinuousSubstrate2D(
-            "rk2d", 0.0, 0.0, px=1.0, py=2.0, mass=1.0, potential_fn=fn, dt=0.1
+            "rk2d", x=0.0, y=0.0, px=1.0, py=2.0, mass=1.0, potential_fn=fn, dt=0.1
         )
         w = ctf.RK42DTask().apply(cs2)[0]
         self.assertAlmostEqual(w.px, 1.0, places=5)
@@ -274,13 +271,57 @@ class TestCTFramework(unittest.TestCase):
     def test_sympeuler2d_task_constant(self):
         fn = lambda x, y: 0.0
         cs2 = ctf.ContinuousSubstrate2D(
-            "se2d", 0.0, 0.0, px=1.0, py=2.0, mass=1.0, potential_fn=fn, dt=0.1
+            "se2d", x=0.0, y=0.0, px=1.0, py=2.0, mass=1.0, potential_fn=fn, dt=0.1
         )
         w = ctf.SymplecticEuler2DTask().apply(cs2)[0]
         self.assertAlmostEqual(w.px, 1.0, places=5)
         self.assertAlmostEqual(w.py, 2.0, places=5)
         self.assertAlmostEqual(w.x, 0.1, places=5)
         self.assertAlmostEqual(w.y, 0.2, places=5)
+
+    # 31. graviton emission
+    def test_graviton_emission(self):
+        MASS = A("mass")
+        ΔE = 3.0
+        emit = ctf.GravitonEmissionTask(MASS, emission_energy=ΔE)
+        cons = ctf.Constructor([emit])
+        m0 = ctf.Substrate("m", MASS, energy=10.0)
+        worlds = cons.perform(m0)
+        mass_br = [b for b in worlds if b.attr == MASS]
+        grav_br = [b for b in worlds if b.attr == ctf.GRAVITON]
+        self.assertEqual(len(mass_br), 1)
+        self.assertEqual(len(grav_br), 1)
+        self.assertAlmostEqual(mass_br[0].energy, 10.0 - ΔE, places=5)
+
+    # 32. graviton absorption
+    def test_graviton_absorption(self):
+        MASS = A("mass")
+        ΔE = 2.5
+        absorb = ctf.GravitonAbsorptionTask(MASS, absorption_energy=ΔE)
+        cons = ctf.Constructor([absorb])
+        g_sub = ctf.Substrate("g", ctf.GRAVITON, energy=0.0)
+        branches = cons.perform(g_sub)
+        self.assertEqual(len(branches), 1)
+        self.assertEqual(branches[0].attr, MASS)
+        self.assertAlmostEqual(branches[0].energy, ΔE, places=5)
+
+    # 33. QuantumGravityConstructor end-to-end
+    def test_quantum_gravity_constructor(self):
+        MASS = A("mass")
+        ΔE = 4.0
+        qg = ctf.QuantumGravityConstructor(MASS, ΔE)
+        m0 = ctf.Substrate("m", MASS, energy=12.0)
+        worlds = qg.perform(m0)
+        mass_w = [w for w in worlds if w.attr == MASS]
+        grav_w = [w for w in worlds if w.attr == ctf.GRAVITON]
+        self.assertEqual(len(mass_w), 1)
+        self.assertEqual(len(grav_w), 1)
+        self.assertAlmostEqual(mass_w[0].energy, 12.0 - ΔE, places=5)
+
+        # now absorb
+        absorb_worlds = qg.perform(grav_w[0])
+        self.assertEqual(absorb_worlds[0].attr, MASS)
+        self.assertAlmostEqual(absorb_worlds[0].energy, ΔE, places=5)
 
 
 if __name__ == "__main__":
