@@ -38,7 +38,7 @@ A **pedagogical Python implementation** of David Deutsch’s Constructor Theory 
 ### Installation
 
 ```bash
-git clone https://github.com/<your-username>/constructor-theory-simulator.git
+git clone https://github.com/gvelesandro/constructor-theory-simulator.git
 cd constructor-theory-simulator
 ```
 
@@ -107,7 +107,7 @@ This is intended as an **educational resource** and proof-of-concept. Contributi
 
 ## 📜 License
 
-Released under the **MIT License**. See [LICENSE](LICENSE) for details.
+Released under the **MIT License**. 
 
 ---
 
