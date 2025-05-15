@@ -1,12 +1,13 @@
 """
 ct_framework.py  ·  Constructor-Theory mini-framework
-Includes local‐dynamics (Euler–Lagrange step) with no runtime loops
+All prior features + 2D continuous substrates & integrators
 May 2025
 """
 
 import math
 import time
 from typing import List, Tuple, Dict, Optional, Callable
+import matplotlib.pyplot as plt
 
 # ── 1. Core datatypes ───────────────────────────────────────────────────
 
@@ -47,7 +48,6 @@ class Substrate:
         self._locked = False
 
     def adjusted_duration(self, τ: float) -> float:
-        """Proper‐time: special relativity & weak‐field red‐shift."""
         c = 299_792_458
         if self.velocity:
             β = self.velocity / c
@@ -90,12 +90,6 @@ class Substrate:
 
 
 class Task:
-    """
-    A Task represents a transformation:
-      input_attr → outputs (list of (Attribute, ΔE, ΔQ)).
-    Supports duration, quantum flag, irreversible flag, clock_inc, action_cost.
-    """
-
     def __init__(
         self,
         name: str,
@@ -124,7 +118,6 @@ class Task:
             return []
         time.sleep(min(s.adjusted_duration(self.duration), 0.004))
 
-        # Irreversible tasks mutate & lock the original substrate
         if self.irreversible:
             out_attr, dE, dQ = self.outputs[0]
             s.evolve_to(out_attr)
@@ -149,11 +142,6 @@ class Task:
 
 
 class Constructor:
-    """
-    Default constructor: applies *all* possible tasks to a substrate,
-    mutating it for irreversible ones and collecting all branches.
-    """
-
     def __init__(self, tasks: List[Task]):
         self.tasks_by_input: Dict[str, List[Task]] = {}
         for t in tasks:
@@ -171,33 +159,17 @@ class Constructor:
         return worlds
 
 
-class ActionConstructor:
-    """
-    Principle of Least Action without runtime loops:
-    pick the task with minimal action_cost per input attribute at init.
-    """
-
+class ActionConstructor(Constructor):
     def __init__(self, tasks: List[Task]):
-        best: Dict[str, Task] = {}
-        for t in tasks:
-            key = t.input_attr.label
-            prev = best.get(key)
-            if prev is None or t.action_cost < prev.action_cost:
-                best[key] = t
-        self._best = best
-
-    def perform(self, s: Substrate) -> List[Substrate]:
-        if getattr(s, "_locked", False):
-            return []
-        t = self._best.get(s.attr.label)
-        if t and t.possible(s):
-            return t.apply(s)
-        return [s]
+        super().__init__(tasks)
+        # keep only lowest-action per input
+        self.tasks_by_input = {
+            label: [min(ts, key=lambda t: t.action_cost)]
+            for label, ts in self.tasks_by_input.items()
+        }
 
 
 class NullConstructor(Constructor):
-    """A no-op constructor."""
-
     def __init__(self):
         super().__init__([])
 
@@ -231,8 +203,6 @@ class TimerConstructor(Constructor):
 
 
 class ClockConstructor:
-    """Clock that increments the real substrate.clock each tick."""
-
     def __init__(self, tick: float):
         self.tick = tick
 
@@ -242,7 +212,7 @@ class ClockConstructor:
         return [s]
 
 
-# ── 4. Fungibility swap & ASCII visualiser ─────────────────────────────
+# ── 4. Fungible swap & ASCII visualiser ─────────────────────────────────
 
 
 class SwapConstructor:
@@ -258,7 +228,27 @@ def ascii_branch(worlds: List[Substrate]) -> str:
     return "\n".join(f"* {w.attr.label} ({w.name})" for w in worlds)
 
 
-# ── 5. Local Dynamics (Euler–Lagrange step) ────────────────────────────
+# ── 5. Phase-space visualiser ───────────────────────────────────────────
+
+
+def plot_phase_space(trajectories: Dict[str, List["ContinuousSubstrate"]]):
+    try:
+        import matplotlib.pyplot as _plt
+    except ImportError:
+        print("matplotlib not available; skipping plot.")
+        return
+    for label, traj in trajectories.items():
+        xs = [s.x for s in traj]
+        ps = [s.p for s in traj]
+        _plt.figure()
+        _plt.plot(xs, ps)
+        _plt.title(f"Phase space: {label}")
+        _plt.xlabel("Position x")
+        _plt.ylabel("Momentum p")
+    _plt.show()
+
+
+# ── 6. Higher-order integrators & 1D dynamics ───────────────────────────
 
 
 def finite_diff(f: Callable[[float], float], x: float, h: float) -> float:
@@ -280,38 +270,289 @@ class ContinuousSubstrate(Substrate):
         self.x, self.p, self.mass = x, p, mass
         self.potential_fn, self.dt = potential_fn, dt
 
-    def clone(self):
-        w = super().clone()
-        w.x, w.p, w.mass = self.x, self.p, self.mass
-        w.potential_fn, w.dt = self.potential_fn, self.dt
+    def clone(self) -> "ContinuousSubstrate":
+        w = ContinuousSubstrate(
+            self.name,
+            self.x,
+            self.p,
+            self.mass,
+            self.potential_fn,
+            self.dt,
+            fungible_id=self.fungible_id,
+            entangled_with=self.entangled_with,
+        )
+        w.energy, w.charge, w.clock = self.energy, self.charge, self.clock
+        w.velocity, w.grav = self.velocity, self.grav
+        w._locked = self._locked
         return w
 
 
 class DynamicsTask(Task):
-    """
-    Local Hamiltonian dynamics:
-    one step of Euler-Lagrange / Hamilton's equations.
-    """
-
     def __init__(self):
         super().__init__(
-            name="dynamics",
-            input_attr=Attribute("dynamic"),
-            outputs=[(Attribute("dynamic"), 0.0, 0)],
-            duration=0.0,
+            "dynamics",
+            Attribute("dynamic"),
+            [(Attribute("dynamic"), 0, 0)],
             clock_inc=1,
         )
 
     def apply(self, s: ContinuousSubstrate) -> List[Substrate]:
         if not self.possible(s):
             return []
-        # compute force = -∂V/∂x
         force = -finite_diff(s.potential_fn, s.x, s.dt)
         p_new = s.p + force * s.dt
         x_new = s.x + (p_new / s.mass) * s.dt
-
         w = s.clone()
         w.p = p_new
         w.x = x_new
+        w.clock += 1
+        return [w]
+
+
+class RK4Task(Task):
+    def __init__(self):
+        super().__init__(
+            "rk4", Attribute("dynamic"), [(Attribute("dynamic"), 0, 0)], clock_inc=1
+        )
+
+    def apply(self, s: ContinuousSubstrate) -> List[Substrate]:
+        if not self.possible(s):
+            return []
+        dt, f = s.dt, s.potential_fn
+
+        def deriv(x, p):
+            return p / s.mass, -finite_diff(f, x, dt)
+
+        k1x, k1p = deriv(s.x, s.p)
+        k2x, k2p = deriv(s.x + k1x * dt / 2, s.p + k1p * dt / 2)
+        k3x, k3p = deriv(s.x + k2x * dt / 2, s.p + k2p * dt / 2)
+        k4x, k4p = deriv(s.x + k3x * dt, s.p + k3p * dt)
+        x_new = s.x + (k1x + 2 * k2x + 2 * k3x + k4x) * dt / 6
+        p_new = s.p + (k1p + 2 * k2p + 2 * k3p + k4p) * dt / 6
+        w = s.clone()
+        w.x = x_new
+        w.p = p_new
+        w.clock += 1
+        return [w]
+
+
+class SymplecticEulerTask(Task):
+    def __init__(self):
+        super().__init__(
+            "symp_euler",
+            Attribute("dynamic"),
+            [(Attribute("dynamic"), 0, 0)],
+            clock_inc=1,
+        )
+
+    def apply(self, s: ContinuousSubstrate) -> List[Substrate]:
+        if not self.possible(s):
+            return []
+        dt = s.dt
+        force = -finite_diff(s.potential_fn, s.x, s.dt)
+        p_new = s.p + force * dt
+        x_new = s.x + (p_new / s.mass) * dt
+        w = s.clone()
+        w.p = p_new
+        w.x = x_new
+        w.clock += 1
+        return [w]
+
+
+# ── 7. Multi-substrate Tasks & 1D coupling ──────────────────────────────
+
+
+class MultiSubstrateTask:
+    def __init__(
+        self,
+        name: str,
+        input_attrs: List[Attribute],
+        apply_fn: Callable[[List[Substrate]], List[List[Substrate]]],
+        duration: float = 0.0,
+    ):
+        self.name = name
+        self.input_attrs = input_attrs
+        self.apply_fn = apply_fn
+        self.duration = duration
+
+    def possible(self, substrates: List[Substrate]) -> bool:
+        return all(sub.attr == inp for sub, inp in zip(substrates, self.input_attrs))
+
+    def apply(self, substrates: List[Substrate]) -> List[List[Substrate]]:
+        time.sleep(min(substrates[0].adjusted_duration(self.duration), 0.004))
+        return self.apply_fn(substrates)
+
+
+class MultiConstructor:
+    def __init__(self, tasks: List[MultiSubstrateTask]):
+        self.tasks = tasks
+
+    def perform(self, substrates: List[Substrate]) -> List[List[Substrate]]:
+        results: List[List[Substrate]] = []
+        for t in self.tasks:
+            if t.possible(substrates):
+                results.extend(t.apply(substrates))
+        return results
+
+
+def grav_coupling_fn(subs: List[Substrate]) -> List[List[Substrate]]:
+    # 1D two-body impulse
+    s1, s2 = subs
+    G = 6.67430e-11
+    r = abs(s2.x - s1.x)
+    F = G * s1.mass * s2.mass / r**2 if r != 0 else 0
+    s1n, s2n = s1.clone(), s2.clone()
+    dt = s1.dt
+    dir12 = (s2.x - s1.x) / r if r != 0 else 1.0
+    s1n.p += F * dir12 * dt
+    s2n.p -= F * dir12 * dt
+    s1n.clock += 1
+    s2n.clock += 1
+    return [[s1n, s2n]]
+
+
+# ── 8. 2D Continuous & 2D integrators ───────────────────────────────────
+
+
+def finite_diff_x(
+    f: Callable[[float, float], float], x: float, y: float, h: float
+) -> float:
+    return (f(x + h, y) - f(x - h, y)) / (2 * h)
+
+
+def finite_diff_y(
+    f: Callable[[float, float], float], x: float, y: float, h: float
+) -> float:
+    return (f(x, y + h) - f(x, y - h)) / (2 * h)
+
+
+class ContinuousSubstrate2D(Substrate):
+    def __init__(
+        self,
+        name: str,
+        x: float,
+        y: float,
+        px: float,
+        py: float,
+        mass: float,
+        potential_fn: Callable[[float, float], float],
+        dt: float,
+        **kwargs,
+    ):
+        super().__init__(name, Attribute("dynamic2d"), energy=0.0, **kwargs)
+        self.x, self.y, self.px, self.py, self.mass = x, y, px, py, mass
+        self.potential2d, self.dt = potential_fn, dt
+
+    def clone(self) -> "ContinuousSubstrate2D":
+        w = ContinuousSubstrate2D(
+            self.name,
+            self.x,
+            self.y,
+            self.px,
+            self.py,
+            self.mass,
+            self.potential2d,
+            self.dt,
+            fungible_id=self.fungible_id,
+            entangled_with=self.entangled_with,
+        )
+        w.energy, w.charge, w.clock = self.energy, self.charge, self.clock
+        w.velocity, w.grav = self.velocity, self.grav
+        w._locked = self._locked
+        return w
+
+
+class Dynamics2DTask(Task):
+    def __init__(self):
+        super().__init__(
+            "dynamics2d",
+            Attribute("dynamic2d"),
+            [(Attribute("dynamic2d"), 0, 0)],
+            clock_inc=1,
+        )
+
+    def apply(self, s: ContinuousSubstrate2D) -> List[Substrate]:
+        if not self.possible(s):
+            return []
+        fx = -finite_diff_x(s.potential2d, s.x, s.y, s.dt)
+        fy = -finite_diff_y(s.potential2d, s.x, s.y, s.dt)
+        px_new = s.px + fx * s.dt
+        py_new = s.py + fy * s.dt
+        x_new = s.x + (px_new / s.mass) * s.dt
+        y_new = s.y + (py_new / s.mass) * s.dt
+        w = s.clone()
+        w.px, w.py, w.x, w.y = px_new, py_new, x_new, y_new
+        w.clock += 1
+        return [w]
+
+
+class RK42DTask(Task):
+    def __init__(self):
+        super().__init__(
+            "rk42d",
+            Attribute("dynamic2d"),
+            [(Attribute("dynamic2d"), 0, 0)],
+            clock_inc=1,
+        )
+
+    def apply(self, s: ContinuousSubstrate2D) -> List[Substrate]:
+        if not self.possible(s):
+            return []
+        dt, f = s.dt, s.potential2d
+
+        def deriv(x, y, px, py):
+            fx = -finite_diff_x(f, x, y, dt)
+            fy = -finite_diff_y(f, x, y, dt)
+            return px / s.mass, py / s.mass, fx, fy
+
+        k1x, k1y, k1px, k1py = deriv(s.x, s.y, s.px, s.py)
+        k2x, k2y, k2px, k2py = deriv(
+            s.x + k1x * dt / 2,
+            s.y + k1y * dt / 2,
+            s.px + k1px * dt / 2,
+            s.py + k1py * dt / 2,
+        )
+        k3x, k3y, k3px, k3py = deriv(
+            s.x + k2x * dt / 2,
+            s.y + k2y * dt / 2,
+            s.px + k2px * dt / 2,
+            s.py + k2py * dt / 2,
+        )
+        k4x, k4y, k4px, k4py = deriv(
+            s.x + k3x * dt, s.y + k3y * dt, s.px + k3px * dt, s.py + k3py * dt
+        )
+
+        x_new = s.x + (k1x + 2 * k2x + 2 * k3x + k4x) * dt / 6
+        y_new = s.y + (k1y + 2 * k2y + 2 * k3y + k4y) * dt / 6
+        px_new = s.px + (k1px + 2 * k2px + 2 * k3px + k4px) * dt / 6
+        py_new = s.py + (k1py + 2 * k2py + 2 * k3py + k4py) * dt / 6
+
+        w = s.clone()
+        w.x, w.y, w.px, w.py = x_new, y_new, px_new, py_new
+        w.clock += 1
+        return [w]
+
+
+class SymplecticEuler2DTask(Task):
+    def __init__(self):
+        super().__init__(
+            "symp_euler2d",
+            Attribute("dynamic2d"),
+            [(Attribute("dynamic2d"), 0, 0)],
+            clock_inc=1,
+        )
+
+    def apply(self, s: ContinuousSubstrate2D) -> List[Substrate]:
+        if not self.possible(s):
+            return []
+        dt = s.dt
+        fx = -finite_diff_x(s.potential2d, s.x, s.y, dt)
+        fy = -finite_diff_y(s.potential2d, s.x, s.y, dt)
+        px_new = s.px + fx * dt
+        py_new = s.py + fy * dt
+        x_new = s.x + (px_new / s.mass) * dt
+        y_new = s.y + (py_new / s.mass) * dt
+        w = s.clone()
+        w.px, w.py, w.x, w.y = px_new, py_new, x_new, y_new
         w.clock += 1
         return [w]
