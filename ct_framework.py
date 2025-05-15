@@ -700,3 +700,14 @@ def lorentz_coupling_fn(subs: List[Substrate]) -> List[List[Substrate]]:
     p_new.clock += 1
     f_new.clock += 1
     return [[p_new, f_new]]
+
+
+class UniversalConstructor:
+    """
+    Given a “program”—i.e. a list of Task objects—this builds a brand‐new
+    Constructor implementing exactly those tasks.
+    """
+
+    def build(self, program: List[Task]) -> Constructor:
+        # Simply delegates to our existing Constructor class
+        return Constructor(program)
