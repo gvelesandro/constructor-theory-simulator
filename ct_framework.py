@@ -138,8 +138,10 @@ class Task:
                 continue
             w = orig.clone()
             w.attr = attr
-            if attr is GRAVITON or attr is PHOTON:
+            if attr is GRAVITON:
                 w.energy = 0.0
+            elif attr is PHOTON:
+                w.energy = orig.energy
             else:
                 w.energy = orig.energy + dE
             w.charge = orig.charge + dQ
