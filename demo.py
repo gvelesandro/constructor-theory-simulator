@@ -2,9 +2,6 @@ import time
 import math
 import matplotlib.pyplot as plt
 
-import time
-import math
-import matplotlib.pyplot as plt
 
 from ct_framework import (
     Substrate,
@@ -30,6 +27,7 @@ from ct_framework import (
     RK42DTask,
     SymplecticEuler2DTask,
     # Electromagnetism imports
+    GRAVITON,
     PHOTON,
     PhotonEmissionTask,
     PhotonAbsorptionTask,

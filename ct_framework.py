@@ -1,9 +1,6 @@
-"""
-ct_framework.py  ·  Constructor-Theory mini-framework
-All prior features + 2D continuous substrates & integrators
-Includes corrections for irreversible guards and graviton tasks
-May 2025
-"""
+# ct_framework.py  ·  Constructor-Theory mini-framework
+# Includes: core constructors, continuous dynamics, quantum gravity,
+# electromagnetism (photons & Coulomb), Lorentz‐force, and more.
 
 import math
 import time
@@ -120,9 +117,10 @@ class Task:
     def apply(self, s: Substrate) -> List[Substrate]:
         if not self.possible(s):
             return []
+        # simulate time delay
         time.sleep(min(s.adjusted_duration(self.duration), 0.004))
         orig = s.clone()
-        # mutate real substrate for classical irreversible tasks only
+        # classical irreversible: mutate real substrate
         if self.irreversible and not self.quantum:
             out_attr, dE, dQ = self.outputs[0]
             s.evolve_to(out_attr)
@@ -131,22 +129,23 @@ class Task:
             s.clock += self.clock_inc
             s._locked = True
         worlds: List[Substrate] = []
-        from ct_framework import GRAVITON, PHOTON
-
         for attr, dE, dQ in self.outputs:
             if orig.energy + dE < 0:
                 continue
             w = orig.clone()
             w.attr = attr
+            # special‐case energies
             if attr is GRAVITON:
                 w.energy = 0.0
             elif attr is PHOTON:
-                w.energy = orig.energy
+                # photon carries residual emitter energy
+                # emission_energy is outputs[0][1]
+                dE_emit = self.outputs[0][1]
+                w.energy = orig.energy + dE_emit
             else:
                 w.energy = orig.energy + dE
             w.charge = orig.charge + dQ
             w.clock = orig.clock + self.clock_inc
-            # lock worlds from classical irreversible tasks
             if self.irreversible and not self.quantum:
                 w._locked = True
             if self.quantum:
@@ -176,6 +175,7 @@ class Constructor:
 class ActionConstructor(Constructor):
     def __init__(self, tasks: List[Task]):
         super().__init__(tasks)
+        # keep only the least-action task per input
         self.tasks_by_input = {
             label: [min(ts, key=lambda t: t.action_cost)]
             for label, ts in self.tasks_by_input.items()
@@ -190,12 +190,12 @@ class NullConstructor(Constructor):
         return [s]
 
 
-# ── 3. Timer & Clock Constructors ───────────────────────────────────────
+# ── 3. Timer & Clock ────────────────────────────────────────────────────
 
 
 class TimerSubstrate(Substrate):
     def __init__(self, name: str, period: float):
-        super().__init__(name, Attribute("start"), 0.0)
+        super().__init__(name, Attribute("start"), energy=0.0)
         self.period = period
         self._t0 = time.time()
 
@@ -225,7 +225,7 @@ class ClockConstructor:
         return [s]
 
 
-# ── 4. Fungible swap & ASCII visualiser ─────────────────────────────────
+# ── 4. Fungible swap & ASCII ─────────────────────────────────────────────
 
 
 class SwapConstructor:
@@ -256,12 +256,12 @@ def plot_phase_space(trajectories: Dict[str, List["ContinuousSubstrate"]]):
         _plt.figure()
         _plt.plot(xs, ps)
         _plt.title(f"Phase space: {label}")
-        _plt.xlabel("Position x")
-        _plt.ylabel("Momentum p")
+        _plt.xlabel("x")
+        _plt.ylabel("p")
     _plt.show()
 
 
-# ── 6. Higher-order integrators & 1D dynamics ───────────────────────────
+# ── 6. 1D Continuous dynamics & integrators ─────────────────────────────
 
 
 def finite_diff(f: Callable[[float], float], x: float, h: float) -> float:
@@ -366,7 +366,7 @@ class SymplecticEulerTask(Task):
         return [w]
 
 
-# ── 7. Multi-substrate Tasks & 1D coupling ──────────────────────────────
+# ── 7. Multi‐substrate Tasks & 1D coupling ──────────────────────────────
 
 
 class MultiSubstrateTask:
@@ -406,10 +406,10 @@ def grav_coupling_fn(subs: List[Substrate]) -> List[List[Substrate]]:
     s1, s2 = subs
     G = 6.67430e-11
     r = abs(s2.x - s1.x)
-    F = G * s1.mass * s2.mass / r**2 if r else 0
+    F = G * s1.mass * s2.mass / (r * r if r else 1.0)
+    dir12 = (s2.x - s1.x) / r if r else 1.0
     s1n, s2n = s1.clone(), s2.clone()
     dt = s1.dt
-    dir12 = (s2.x - s1.x) / r if r else 1.0
     s1n.p += F * dir12 * dt
     s2n.p -= F * dir12 * dt
     s1n.clock += 1
@@ -417,7 +417,7 @@ def grav_coupling_fn(subs: List[Substrate]) -> List[List[Substrate]]:
     return [[s1n, s2n]]
 
 
-# ── 8. 2D Continuous & 2D integrators ───────────────────────────────────
+# ── 8. 2D Continuous & integrators ─────────────────────────────────────
 
 
 def finite_diff_x(
@@ -562,7 +562,7 @@ class SymplecticEuler2DTask(Task):
         return [w]
 
 
-# ── 9. Quantum-Gravity Constructors ──────────────────────────────────────
+# ── 9. Quantum Gravity ──────────────────────────────────────────────────
 
 GRAVITON = Attribute("graviton")
 
@@ -570,10 +570,9 @@ GRAVITON = Attribute("graviton")
 class GravitonEmissionTask(Task):
     def __init__(self, mass_attr: Attribute, emission_energy: float = 1.0):
         super().__init__(
-            name="emit_graviton",
-            input_attr=mass_attr,
-            outputs=[(mass_attr, -emission_energy, 0), (GRAVITON, 0, 0)],
-            duration=0.0,
+            "emit_graviton",
+            mass_attr,
+            [(mass_attr, -emission_energy, 0), (GRAVITON, 0, 0)],
             quantum=True,
             irreversible=True,
             clock_inc=1,
@@ -584,10 +583,9 @@ class GravitonEmissionTask(Task):
 class GravitonAbsorptionTask(Task):
     def __init__(self, mass_attr: Attribute, absorption_energy: float = 1.0):
         super().__init__(
-            name="absorb_graviton",
-            input_attr=GRAVITON,
-            outputs=[(mass_attr, absorption_energy, 0)],
-            duration=0.0,
+            "absorb_graviton",
+            GRAVITON,
+            [(mass_attr, absorption_energy, 0)],
             quantum=True,
             irreversible=False,
             clock_inc=1,
@@ -602,24 +600,17 @@ class QuantumGravityConstructor(Constructor):
         super().__init__([emit, absorb])
 
 
-# ── 10. Electromagnetism: photon tasks & Coulomb coupling ────────────────
+# ── 10. Electromagnetism ─────────────────────────────────────────────────
 
-# 10.1 Photon quanta
 PHOTON = Attribute("photon")
 
 
 class PhotonEmissionTask(Task):
-    """
-    Emits a photon quantum from any 'source_attr' substrate,
-    subtracting energy ΔE from the source.
-    """
-
     def __init__(self, source_attr: Attribute, emission_energy: float = 1.0):
         super().__init__(
-            name="emit_photon",
-            input_attr=source_attr,
-            outputs=[(source_attr, -emission_energy, 0), (PHOTON, 0, 0)],
-            duration=0.0,
+            "emit_photon",
+            source_attr,
+            [(source_attr, -emission_energy, 0), (PHOTON, 0, 0)],
             quantum=True,
             irreversible=True,
             clock_inc=1,
@@ -628,17 +619,11 @@ class PhotonEmissionTask(Task):
 
 
 class PhotonAbsorptionTask(Task):
-    """
-    Absorbs a photon quantum, transferring its energy ΔE
-    into the target_attr substrate.
-    """
-
     def __init__(self, target_attr: Attribute, absorption_energy: float = 1.0):
         super().__init__(
-            name="absorb_photon",
-            input_attr=PHOTON,
-            outputs=[(target_attr, absorption_energy, 0)],
-            duration=0.0,
+            "absorb_photon",
+            PHOTON,
+            [(target_attr, absorption_energy, 0)],
             quantum=True,
             irreversible=False,
             clock_inc=1,
@@ -647,29 +632,17 @@ class PhotonAbsorptionTask(Task):
 
 
 class EMConstructor(Constructor):
-    """
-    Bundles photon emission & absorption for a given substrate attr.
-    """
-
     def __init__(self, attr: Attribute, ΔE: float = 1.0):
         emit = PhotonEmissionTask(attr, emission_energy=ΔE)
         absorb = PhotonAbsorptionTask(attr, absorption_energy=ΔE)
         super().__init__([emit, absorb])
 
 
-# 10.2 Coulomb-force coupling for two charged continuous substrates
-
-
 def coulomb_coupling_fn(subs: List[Substrate]) -> List[List[Substrate]]:
-    """
-    Impulse coupling: F = k·q1·q2 / r^2 along x-axis.
-    Only valid for 1D ContinuousSubstrate (uses .x, .p, .dt).
-    """
     s1, s2 = subs
-    k = 8.9875517923e9  # N·m²/C²
+    k = 8.9875517923e9
     dx = s2.x - s1.x
     r2 = dx * dx or 1e-12
-    # force magnitude (repulsive for like charges)
     F = k * s1.charge * s2.charge / r2
     dir12 = 1 if dx >= 0 else -1
     s1n, s2n = s1.clone(), s2.clone()
@@ -681,10 +654,9 @@ def coulomb_coupling_fn(subs: List[Substrate]) -> List[List[Substrate]]:
     return [[s1n, s2n]]
 
 
-# ── 11.  Lorentz‐Force Coupling (2D) ─────────────────────────────────────
+# ── 11. Lorentz‐Force (2D) ───────────────────────────────────────────────
 
 
-# a little substrate to carry a uniform B‐field (out of plane)
 class FieldSubstrate(Substrate):
     def __init__(self, name: str, Bz: float):
         super().__init__(name, Attribute("B_field"), energy=0.0)
@@ -692,7 +664,6 @@ class FieldSubstrate(Substrate):
 
     def clone(self) -> "FieldSubstrate":
         w = FieldSubstrate(self.name, self.Bz)
-        # copy over bookkeeping
         w.energy, w.charge, w.clock = self.energy, self.charge, self.clock
         w.velocity, w.grav = self.velocity, self.grav
         w.fungible_id, w.entangled_with = self.fungible_id, self.entangled_with
@@ -701,26 +672,15 @@ class FieldSubstrate(Substrate):
 
 
 def lorentz_coupling_fn(subs: List[Substrate]) -> List[List[Substrate]]:
-    """
-    F = q (v × B) for 2D: B = (0,0,Bz) ⇒
-      Fx =  q * vy * Bz
-      Fy = -q * vx * Bz
-    Applies to one ContinuousSubstrate2D + one FieldSubstrate.
-    """
     particle, field = subs
-    # assume particle is ContinuousSubstrate2D and has .px, .py, .mass, .dt, .charge
-    Bz = getattr(field, "Bz", 0.0)
+    Bz = field.Bz
     dt = particle.dt
-    # compute force
     Fx = particle.charge * particle.py * Bz
     Fy = -particle.charge * particle.px * Bz
-    # clone both
     p_new = particle.clone()
     f_new = field.clone()
-    # update momentum
     p_new.px += Fx * dt
     p_new.py += Fy * dt
-    # advance clock
     p_new.clock += 1
     f_new.clock += 1
     return [[p_new, f_new]]
