@@ -2,6 +2,10 @@ import time
 import math
 import matplotlib.pyplot as plt
 
+import time
+import math
+import matplotlib.pyplot as plt
+
 from ct_framework import (
     Substrate,
     Attribute,
@@ -21,17 +25,19 @@ from ct_framework import (
     RK4Task,
     SymplecticEulerTask,
     grav_coupling_fn,
-    # 2D classes
     ContinuousSubstrate2D,
     Dynamics2DTask,
     RK42DTask,
     SymplecticEuler2DTask,
-    # Electromagnetism
+    # Electromagnetism imports
     PHOTON,
     PhotonEmissionTask,
     PhotonAbsorptionTask,
     EMConstructor,
     coulomb_coupling_fn,
+    # Lorentz-force imports
+    FieldSubstrate,
+    lorentz_coupling_fn,
 )
 
 
@@ -234,6 +240,33 @@ def demo_coulomb_coupling():
     print()
 
 
+def demo_lorentz_force():
+    print("=== Lorentz‐Force Coupling Demo (2D) ===")
+    cs = ContinuousSubstrate2D(
+        "e−",
+        x=0.0,
+        y=1.0,
+        px=2.0,
+        py=3.0,
+        mass=1.0,
+        potential_fn=lambda x, y: 0.0,
+        dt=0.1,
+        charge=+1,
+    )
+    B = FieldSubstrate("B", Bz=0.5)
+    task = MultiSubstrateTask("lorentz", [cs.attr, B.attr], lorentz_coupling_fn)
+    mc = MultiConstructor([task])
+
+    before = (cs.px, cs.py)
+    out_cs, out_B = mc.perform([cs, B])[0]
+    after = (out_cs.px, out_cs.py)
+
+    print(f" Before momentum: px={before[0]:.3f}, py={before[1]:.3f}")
+    print(f" After  momentum: px={after[0]:.3f}, py={after[1]:.3f}")
+    print(f"  B-field (unchanged): Bz={out_B.Bz}")
+    print()
+
+
 if __name__ == "__main__":
     demo_task_constructor()
     demo_action_constructor()
@@ -250,3 +283,4 @@ if __name__ == "__main__":
     demo_2d_orbit(SymplecticEuler2DTask(), steps=100)
     demo_photon_emission_absorption()
     demo_coulomb_coupling()
+    demo_lorentz_force()

@@ -367,6 +367,39 @@ class TestCTFramework(unittest.TestCase):
         self.assertNotEqual(out1.p, cs1.p)
         self.assertAlmostEqual(out1.p, -out2.p, places=6)
 
+    # 37. Lorentz force coupling (2D)
+    def test_lorentz_force_coupling_2d(self):
+        # set up a charged 2D substrate
+        cs = ctf.ContinuousSubstrate2D(
+            "e-",
+            x=0.0,
+            y=1.0,
+            px=2.0,
+            py=3.0,
+            mass=1.0,
+            potential_fn=lambda x, y: 0.0,
+            dt=0.1,
+            charge=+1,
+        )
+        # uniform Bz = 0.5 outward
+        B = ctf.FieldSubstrate("B", Bz=0.5)
+        # wire up the multi‐substrate lorentz task
+        task = ctf.MultiSubstrateTask(
+            "lorentz", [cs.attr, B.attr], ctf.lorentz_coupling_fn
+        )
+        mc = ctf.MultiConstructor([task])
+
+        out_cs, out_B = mc.perform([cs, B])[0]
+
+        # expected impulses
+        expected_Fx = cs.charge * cs.py * B.Bz
+        expected_Fy = -cs.charge * cs.px * B.Bz
+
+        self.assertAlmostEqual(out_cs.px, cs.px + expected_Fx * cs.dt, places=6)
+        self.assertAlmostEqual(out_cs.py, cs.py + expected_Fy * cs.dt, places=6)
+        # B‐field should be unchanged
+        self.assertEqual(out_B.Bz, B.Bz)
+
 
 if __name__ == "__main__":
     unittest.main()

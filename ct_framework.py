@@ -131,14 +131,14 @@ class Task:
             s.clock += self.clock_inc
             s._locked = True
         worlds: List[Substrate] = []
-        from ct_framework import GRAVITON
+        from ct_framework import GRAVITON, PHOTON
 
         for attr, dE, dQ in self.outputs:
             if orig.energy + dE < 0:
                 continue
             w = orig.clone()
             w.attr = attr
-            if attr is GRAVITON:
+            if attr is GRAVITON or attr is PHOTON:
                 w.energy = 0.0
             else:
                 w.energy = orig.energy + dE
@@ -677,3 +677,48 @@ def coulomb_coupling_fn(subs: List[Substrate]) -> List[List[Substrate]]:
     s1n.clock += 1
     s2n.clock += 1
     return [[s1n, s2n]]
+
+
+# ── 11.  Lorentz‐Force Coupling (2D) ─────────────────────────────────────
+
+
+# a little substrate to carry a uniform B‐field (out of plane)
+class FieldSubstrate(Substrate):
+    def __init__(self, name: str, Bz: float):
+        super().__init__(name, Attribute("B_field"), energy=0.0)
+        self.Bz = Bz
+
+    def clone(self) -> "FieldSubstrate":
+        w = FieldSubstrate(self.name, self.Bz)
+        # copy over bookkeeping
+        w.energy, w.charge, w.clock = self.energy, self.charge, self.clock
+        w.velocity, w.grav = self.velocity, self.grav
+        w.fungible_id, w.entangled_with = self.fungible_id, self.entangled_with
+        w._locked = self._locked
+        return w
+
+
+def lorentz_coupling_fn(subs: List[Substrate]) -> List[List[Substrate]]:
+    """
+    F = q (v × B) for 2D: B = (0,0,Bz) ⇒
+      Fx =  q * vy * Bz
+      Fy = -q * vx * Bz
+    Applies to one ContinuousSubstrate2D + one FieldSubstrate.
+    """
+    particle, field = subs
+    # assume particle is ContinuousSubstrate2D and has .px, .py, .mass, .dt, .charge
+    Bz = getattr(field, "Bz", 0.0)
+    dt = particle.dt
+    # compute force
+    Fx = particle.charge * particle.py * Bz
+    Fy = -particle.charge * particle.px * Bz
+    # clone both
+    p_new = particle.clone()
+    f_new = field.clone()
+    # update momentum
+    p_new.px += Fx * dt
+    p_new.py += Fy * dt
+    # advance clock
+    p_new.clock += 1
+    f_new.clock += 1
+    return [[p_new, f_new]]
