@@ -2,7 +2,7 @@
 
 A **pedagogical Python implementation** of David Deutsch’s Constructor Theory framework, exposing key concepts—from simple Tasks and branching substrates to quantum-gravity and electromagnetism—entirely in code. Includes a “universal constructor” that can bootstrap itself from a list of Tasks, demonstrating self-replication and the power of Constructor Theory.
 
-> *“A demonstration of how constructor theory **could** be explored in code, not a high-precision physics engine. For the formal definitions, see David Deutsch’s recent paper “Constructor Theory of Time” (May 2025).*
+> *“A demonstration of how constructor theory **could** be explored in code, not a high-precision physics engine. For the formal definitions, see David Deutsch and Chiara Marletto’s recent paper “[Constructor Theory of Time](https://arxiv.org/abs/2505.08692)” (May 13, 2025).*
 
 ---
 
@@ -38,7 +38,7 @@ A **pedagogical Python implementation** of David Deutsch’s Constructor Theory 
 ### Installation
 
 ```bash
-git clone https://github.com/gvelesandro/constructor-theory-simulator.git
+git clone https://github.com/<your-username>/constructor-theory-simulator.git
 cd constructor-theory-simulator
 ```
 
@@ -113,5 +113,5 @@ Released under the **MIT License**. See [LICENSE](LICENSE) for details.
 
 ## 🙏 Acknowledgments
 
-* Inspired by David Deutsch’s work in **Constructor Theory** and his May 2025 paper “Constructor Theory of Time.”
+* Inspired by David Deutsch and Chiara Marletto’s work in **Constructor Theory** and their May 13, 2025 paper “[Constructor Theory of Time](https://arxiv.org/abs/2505.08692).”
 * Thanks to the quantum-foundations community for feedback and discussion.
