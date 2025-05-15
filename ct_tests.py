@@ -323,6 +323,50 @@ class TestCTFramework(unittest.TestCase):
         self.assertEqual(absorb_worlds[0].attr, MASS)
         self.assertAlmostEqual(absorb_worlds[0].energy, ΔE, places=5)
 
+    # 34. photon emission
+    def test_photon_emission(self):
+        ELEC = A("charge_site")
+        ΔE = 5.0
+        emit = ctf.PhotonEmissionTask(ELEC, emission_energy=ΔE)
+        cons = ctf.Constructor([emit])
+        s0 = ctf.Substrate("S", ELEC, energy=20.0)
+        worlds = cons.perform(s0)
+        # one world with reduced energy, one photon
+        self.assertEqual(len(worlds), 2)
+        sch, ph = sorted(worlds, key=lambda w: w.attr.label)
+        self.assertEqual(ph.attr, ctf.PHOTON)
+        self.assertAlmostEqual(sch.energy, 20.0 - ΔE, places=6)
+
+    # 35. photon absorption
+    def test_photon_absorption(self):
+        ELEC = A("charge_site")
+        ΔE = 2.5
+        absrt = ctf.PhotonAbsorptionTask(ELEC, absorption_energy=ΔE)
+        cons = ctf.Constructor([absrt])
+        ph = ctf.Substrate("γ", ctf.PHOTON, energy=0.0)
+        worlds = cons.perform(ph)
+        self.assertEqual(len(worlds), 1)
+        self.assertEqual(worlds[0].attr, ELEC)
+        self.assertAlmostEqual(worlds[0].energy, ΔE, places=6)
+
+    # 36. Coulomb coupling 1D
+    def test_coulomb_coupling_1d(self):
+        # two positive charges repel
+        cs1 = ctf.ContinuousSubstrate(
+            "c1", -1.0, 0.0, mass=1.0, potential_fn=lambda x: 0.0, dt=0.1, charge=+1
+        )
+        cs2 = ctf.ContinuousSubstrate(
+            "c2", +1.0, 0.0, mass=1.0, potential_fn=lambda x: 0.0, dt=0.1, charge=+1
+        )
+        task = ctf.MultiSubstrateTask(
+            "coulomb", [cs1.attr, cs2.attr], ctf.coulomb_coupling_fn
+        )
+        mc = ctf.MultiConstructor([task])
+        out1, out2 = mc.perform([cs1, cs2])[0]
+        # they should have opposite momentum changes
+        self.assertNotEqual(out1.p, cs1.p)
+        self.assertAlmostEqual(out1.p, -out2.p, places=6)
+
 
 if __name__ == "__main__":
     unittest.main()

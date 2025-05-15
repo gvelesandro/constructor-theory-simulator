@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import time
 import math
 import matplotlib.pyplot as plt
@@ -27,6 +26,12 @@ from ct_framework import (
     Dynamics2DTask,
     RK42DTask,
     SymplecticEuler2DTask,
+    # Electromagnetism
+    PHOTON,
+    PhotonEmissionTask,
+    PhotonAbsorptionTask,
+    EMConstructor,
+    coulomb_coupling_fn,
 )
 
 
@@ -123,10 +128,10 @@ def demo_integrators():
 
 
 def demo_two_body_GR():
-    print("=== Two-Body GR Demo (Newton + weak-field redshift) ===")
+    print("=== Two-Body GR Demo (1D) ===")
     G = 6.67430e-11
     dt = 0.1
-    STEPS = 200
+    STEPS = 50
     s1 = ContinuousSubstrate(
         "Body1", -1.0, 0.5, mass=5.0, potential_fn=lambda x: 0.0, dt=dt
     )
@@ -135,71 +140,24 @@ def demo_two_body_GR():
     )
     grav_task = MultiSubstrateTask("grav", [s1.attr, s2.attr], grav_coupling_fn)
     mc = MultiConstructor([grav_task])
-    tau1 = tau2 = 0.0
-    traj1, traj2, proper1, proper2 = [s1.clone()], [s2.clone()], [], []
     for i in range(1, STEPS + 1):
         s1, s2 = mc.perform([s1, s2])[0]
         s1 = DynamicsTask().apply(s1)[0]
         s2 = DynamicsTask().apply(s2)[0]
-        r = abs(s2.x - s1.x) or 1e-6
-        s1.grav = -G * s2.mass / r
-        s2.grav = -G * s1.mass / r
-        tau1 += s1.adjusted_duration(dt)
-        tau2 += s2.adjusted_duration(dt)
-        proper1.append(tau1)
-        proper2.append(tau2)
-        traj1.append(s1.clone())
-        traj2.append(s2.clone())
-        if i % 50 == 0:
-            print(
-                f"Step {i:3d}: x1={s1.x:+.3f}, x2={s2.x:+.3f}, τ1={tau1:.5f}, τ2={tau2:.5f}"
-            )
-    # plot
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(6, 6))
-    ax1.plot([p.x for p in traj1], label="B1")
-    ax1.plot([p.x for p in traj2], label="B2")
-    ax1.set(title="Two-Body Orbit (1D)", xlabel="Step", ylabel="x")
-    ax1.legend()
-    ax2.plot(range(1, STEPS + 1), [p1 - p2 for p1, p2 in zip(proper1, proper2)])
-    ax2.set(title="Δτ", xlabel="Step", ylabel="τ1−τ2")
-    plt.tight_layout()
-    plt.show()
+    print(f"Final positions: {s1.x:.3f}, {s2.x:.3f}")
     print()
 
 
 def demo_orbit_conditions():
     print("=== Circular‐Orbit Conditions Demo ===")
-    G = 6.67430e-11
-    m1, m2 = 5.0, 3.0
-    r = 1.0
+    G, m1, m2, r = 1.0, 5.0, 3.0, 1.0
     μ = m1 * m2 / (m1 + m2)
     v_rel = math.sqrt(G * m1 * m2 / (μ * r))
-    print(f"r={r}, μ={μ:.3f}, |v1−v2|={v_rel:.5e}")
-    p_mag = μ * v_rel
-    s1 = ContinuousSubstrate(
-        "B1", -r / 2, +p_mag, mass=m1, potential_fn=lambda x: 0.0, dt=0.01
-    )
-    s2 = ContinuousSubstrate(
-        "B2", +r / 2, -p_mag, mass=m2, potential_fn=lambda x: 0.0, dt=0.01
-    )
-    traj1, traj2 = [s1.clone()], [s2.clone()]
-    for i in range(100):
-        s1 = DynamicsTask().apply(s1)[0]
-        s2 = DynamicsTask().apply(s2)[0]
-        traj1.append(s1.clone())
-        traj2.append(s2.clone())
-    print(f"Final x: B1={traj1[-1].x:.6f}, B2={traj2[-1].x:.6f}\n")
-    plt.figure()
-    plt.plot([p.x for p in traj1], label="B1")
-    plt.plot([p.x for p in traj2], label="B2")
-    plt.title("Circular‐Orbit Demo (1D)")
-    plt.xlabel("Step")
-    plt.ylabel("x")
-    plt.legend()
-    plt.show()
+    print(f"r={r}, μ={μ:.3f}, v_rel={v_rel:.3f}")
+    print()
 
 
-def demo_2d_orbit(integrator, steps=300):
+def demo_2d_orbit(integrator, steps=100):
     print(f"=== 2D Orbit with {integrator.__class__.__name__} ({steps} steps) ===")
     G, M = 1.0, 1.0
     potential2d = lambda x, y: -G * M / math.hypot(x, y)
@@ -216,21 +174,14 @@ def demo_2d_orbit(integrator, steps=300):
         s1, s2 = subs
         dx, dy = s2.x - s1.x, s2.y - s1.y
         r2 = dx * dx + dy * dy
-        if r2 == 0:
-            fx = fy = 0.0
-        else:
-            F = G * s1.mass * s2.mass / r2
-            r = math.sqrt(r2)
-            fx, fy = F * dx / r, F * dy / r
-        dt = s1.dt
-        n1, n2 = s1.clone(), s2.clone()
-        n1.px += fx * dt
-        n1.py += fy * dt
-        n2.px -= fx * dt
-        n2.py -= fy * dt
-        n1.clock += 1
-        n2.clock += 1
-        return [[n1, n2]]
+        F = G * s1.mass * s2.mass / (r2 if r2 else 1e-6)
+        dirx, diry = dx / math.sqrt(r2), dy / math.sqrt(r2) if r2 else (1.0, 0.0)
+        s1n, s2n = s1.clone(), s2.clone()
+        s1n.px += F * dirx * s1.dt
+        s1n.py += F * diry * s1.dt
+        s2n.px -= F * dirx * s1.dt
+        s2n.py -= F * diry * s1.dt
+        return [[s1n, s2n]]
 
     mc = MultiConstructor([MultiSubstrateTask("grav2d", [sat.attr, cent.attr], grav2d)])
     xs, ys = [], []
@@ -241,11 +192,45 @@ def demo_2d_orbit(integrator, steps=300):
         ys.append(sat.y)
     plt.figure(figsize=(5, 5))
     plt.plot(xs, ys, "-", lw=1)
-    plt.scatter([0], [0], color="red", s=40, label="Central")
+    plt.scatter([0], [0], color="red", s=30, label="Center")
     plt.axis("equal")
-    plt.title(f"2D Orbit ({integrator.__class__.__name__})")
+    plt.title("2D Orbit")
     plt.legend()
     plt.show()
+    print()
+
+
+# Electromagnetism demos
+
+
+def demo_photon_emission_absorption():
+    print("=== Photon Emission/Absorption Demo ===")
+    ELEC = Attribute("charge_site")
+    EM = EMConstructor(ELEC, ΔE=5.0)
+    s = Substrate("Atom", ELEC, energy=20.0)
+    branches = EM.perform(s)
+    for w in branches:
+        print(w)
+    photon = next(w for w in branches if w.attr == PHOTON)
+    print("Absorbing photon...")
+    back = EM.perform(photon)[0]
+    print("After absorption:", back)
+    print()
+
+
+def demo_coulomb_coupling():
+    print("=== Coulomb Coupling Demo (1D) ===")
+    cs1 = ContinuousSubstrate(
+        "p1", -1.0, 0.0, mass=1.0, potential_fn=lambda x: 0.0, dt=0.1, charge=+1
+    )
+    cs2 = ContinuousSubstrate(
+        "p2", +1.0, 0.0, mass=1.0, potential_fn=lambda x: 0.0, dt=0.1, charge=+1
+    )
+    task = MultiSubstrateTask("coulomb", [cs1.attr, cs2.attr], coulomb_coupling_fn)
+    mc = MultiConstructor([task])
+    out1, out2 = mc.perform([cs1, cs2])[0]
+    print("Before coupling:", cs1.p, cs2.p)
+    print("After coupling: ", out1.p, out2.p)
     print()
 
 
@@ -260,6 +245,8 @@ if __name__ == "__main__":
     demo_integrators()
     demo_two_body_GR()
     demo_orbit_conditions()
-    demo_2d_orbit(Dynamics2DTask(), steps=300)
-    demo_2d_orbit(RK42DTask(), steps=300)
-    demo_2d_orbit(SymplecticEuler2DTask(), steps=300)
+    demo_2d_orbit(Dynamics2DTask(), steps=100)
+    demo_2d_orbit(RK42DTask(), steps=100)
+    demo_2d_orbit(SymplecticEuler2DTask(), steps=100)
+    demo_photon_emission_absorption()
+    demo_coulomb_coupling()

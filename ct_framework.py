@@ -598,3 +598,82 @@ class QuantumGravityConstructor(Constructor):
         emit = GravitonEmissionTask(mass_attr, emission_energy=ΔE)
         absorb = GravitonAbsorptionTask(mass_attr, absorption_energy=ΔE)
         super().__init__([emit, absorb])
+
+
+# ── 10. Electromagnetism: photon tasks & Coulomb coupling ────────────────
+
+# 10.1 Photon quanta
+PHOTON = Attribute("photon")
+
+
+class PhotonEmissionTask(Task):
+    """
+    Emits a photon quantum from any 'source_attr' substrate,
+    subtracting energy ΔE from the source.
+    """
+
+    def __init__(self, source_attr: Attribute, emission_energy: float = 1.0):
+        super().__init__(
+            name="emit_photon",
+            input_attr=source_attr,
+            outputs=[(source_attr, -emission_energy, 0), (PHOTON, 0, 0)],
+            duration=0.0,
+            quantum=True,
+            irreversible=True,
+            clock_inc=1,
+            action_cost=emission_energy,
+        )
+
+
+class PhotonAbsorptionTask(Task):
+    """
+    Absorbs a photon quantum, transferring its energy ΔE
+    into the target_attr substrate.
+    """
+
+    def __init__(self, target_attr: Attribute, absorption_energy: float = 1.0):
+        super().__init__(
+            name="absorb_photon",
+            input_attr=PHOTON,
+            outputs=[(target_attr, absorption_energy, 0)],
+            duration=0.0,
+            quantum=True,
+            irreversible=False,
+            clock_inc=1,
+            action_cost=absorption_energy,
+        )
+
+
+class EMConstructor(Constructor):
+    """
+    Bundles photon emission & absorption for a given substrate attr.
+    """
+
+    def __init__(self, attr: Attribute, ΔE: float = 1.0):
+        emit = PhotonEmissionTask(attr, emission_energy=ΔE)
+        absorb = PhotonAbsorptionTask(attr, absorption_energy=ΔE)
+        super().__init__([emit, absorb])
+
+
+# 10.2 Coulomb-force coupling for two charged continuous substrates
+
+
+def coulomb_coupling_fn(subs: List[Substrate]) -> List[List[Substrate]]:
+    """
+    Impulse coupling: F = k·q1·q2 / r^2 along x-axis.
+    Only valid for 1D ContinuousSubstrate (uses .x, .p, .dt).
+    """
+    s1, s2 = subs
+    k = 8.9875517923e9  # N·m²/C²
+    dx = s2.x - s1.x
+    r2 = dx * dx or 1e-12
+    # force magnitude (repulsive for like charges)
+    F = k * s1.charge * s2.charge / r2
+    dir12 = 1 if dx >= 0 else -1
+    s1n, s2n = s1.clone(), s2.clone()
+    dt = s1.dt
+    s1n.p += F * dir12 * dt
+    s2n.p -= F * dir12 * dt
+    s1n.clock += 1
+    s2n.clock += 1
+    return [[s1n, s2n]]
