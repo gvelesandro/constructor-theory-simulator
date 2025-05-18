@@ -1,7 +1,12 @@
 import time
 import math
 import unittest
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+    HAS_PLT = True
+except ImportError:  # pragma: no cover - optional dependency
+    plt = None
+    HAS_PLT = False
 import ct_framework as ctf
 
 A = ctf.Attribute  # shorthand
@@ -194,6 +199,7 @@ class TestCTFramework(unittest.TestCase):
         self.assertNotEqual(m2n.p, cs2.p)
 
     # 23. phase-space visualiser
+    @unittest.skipUnless(HAS_PLT, "matplotlib not installed")
     def test_phase_space(self):
         orig = plt.show
         plt.show = lambda *a, **k: None
