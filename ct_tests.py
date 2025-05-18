@@ -407,5 +407,37 @@ class TestCTFramework(unittest.TestCase):
         self.assertEqual(out_B.Bz, B.Bz)
 
 
+    # 38. Hydrogen atom excitation and deexcitation
+    def test_hydrogen_excitation_cycle(self):
+        gap = 10.2
+        cons = ctf.HydrogenAtomConstructor(gap)
+        h = ctf.Substrate("H", ctf.HYDROGEN_GROUND, energy=0.0)
+        excited = cons.perform(h)[0]
+        self.assertEqual(excited.attr, ctf.HYDROGEN_EXCITED)
+        self.assertAlmostEqual(excited.energy, gap, places=6)
+        worlds = cons.perform(excited)
+        attrs = {w.attr for w in worlds}
+        self.assertIn(ctf.HYDROGEN_GROUND, attrs)
+        self.assertIn(ctf.PHOTON, attrs)
+
+    # 39. Hydrogen collision leading to molecule
+    def test_hydrogen_collision_bond(self):
+        hi = ctf.HydrogenInteractionConstructor(bond_energy=4.5)
+        h1 = ctf.Substrate("h1", ctf.HYDROGEN_GROUND, energy=3.0)
+        h2 = ctf.Substrate("h2", ctf.HYDROGEN_GROUND, energy=3.0)
+        result = hi.perform([h1, h2])[0]
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].attr, ctf.HYDROGEN_MOLECULE)
+
+    # 40. Hydrogen collision insufficient energy
+    def test_hydrogen_collision_no_bond(self):
+        hi = ctf.HydrogenInteractionConstructor(bond_energy=4.5)
+        h1 = ctf.Substrate("ha", ctf.HYDROGEN_GROUND, energy=1.0)
+        h2 = ctf.Substrate("hb", ctf.HYDROGEN_GROUND, energy=1.0)
+        result = hi.perform([h1, h2])[0]
+        self.assertEqual(len(result), 2)
+        self.assertEqual({s.attr for s in result}, {ctf.HYDROGEN_GROUND})
+
+
 if __name__ == "__main__":
     unittest.main()

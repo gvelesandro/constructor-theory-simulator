@@ -722,3 +722,82 @@ class UniversalConstructor:
 
     def build(self, program: List[Task]) -> Constructor:
         return Constructor(program)
+
+# ── 13. Hydrogen Atom Constructors ─────────────────────────────────────
+
+# Hydrogen attributes
+HYDROGEN_GROUND = Attribute("H_ground")
+HYDROGEN_EXCITED = Attribute("H_excited")
+HYDROGEN_MOLECULE = Attribute("H2")
+
+class HydrogenExcitationTask(Task):
+    def __init__(self, energy_gap: float = 10.2):
+        super().__init__(
+            "H_excite",
+            HYDROGEN_GROUND,
+            [(HYDROGEN_EXCITED, energy_gap, 0)],
+            clock_inc=1,
+        )
+
+class HydrogenDeexcitationTask(Task):
+    def __init__(self, energy_gap: float = 10.2):
+        super().__init__(
+            "H_deexcite",
+            HYDROGEN_EXCITED,
+            [(HYDROGEN_GROUND, -energy_gap, 0), (PHOTON, 0, 0)],
+            quantum=True,
+            irreversible=True,
+            clock_inc=1,
+        )
+        self.energy_gap = energy_gap
+
+    def apply(self, s: Substrate) -> List[Substrate]:
+        if not self.possible(s):
+            return []
+        time.sleep(min(s.adjusted_duration(self.duration), 0.004))
+        orig = s.clone()
+        worlds: List[Substrate] = []
+
+        h = orig.clone()
+        h.attr = HYDROGEN_GROUND
+        h.energy = orig.energy - self.energy_gap
+        h.clock += self.clock_inc
+        h._locked = True
+        worlds.append(h)
+
+        photon = orig.clone()
+        photon.attr = PHOTON
+        photon.energy = self.energy_gap
+        photon.clock += self.clock_inc
+        photon._locked = True
+        worlds.append(photon)
+        return worlds
+
+
+def hydrogen_collision_fn(subs: List[Substrate], bond_energy: float = 4.5) -> List[List[Substrate]]:
+    h1, h2 = subs
+    total = h1.energy + h2.energy
+    if total >= bond_energy:
+        h2mol = Substrate(f"{h1.name}+{h2.name}", HYDROGEN_MOLECULE, total - bond_energy)
+        return [[h2mol]]
+    else:
+        return [[h1.clone(), h2.clone()]]
+
+
+class HydrogenCollisionTask(MultiSubstrateTask):
+    def __init__(self, bond_energy: float = 4.5):
+        fn = lambda subs: hydrogen_collision_fn(subs, bond_energy)
+        super().__init__("H_collision", [HYDROGEN_GROUND, HYDROGEN_GROUND], fn)
+
+
+class HydrogenAtomConstructor(Constructor):
+    def __init__(self, energy_gap: float = 10.2):
+        excite = HydrogenExcitationTask(energy_gap)
+        deexcite = HydrogenDeexcitationTask(energy_gap)
+        super().__init__([excite, deexcite])
+
+
+class HydrogenInteractionConstructor(MultiConstructor):
+    def __init__(self, bond_energy: float = 4.5):
+        task = HydrogenCollisionTask(bond_energy)
+        super().__init__([task])

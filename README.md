@@ -21,6 +21,7 @@ A **Python implementation** of David Deutsch’s Constructor Theory framework, e
   * Lorentz-force (2D) for charged particles in a magnetic field
 * **Quantum-Gravity & Electromagnetism**: Graviton & Photon emission/absorption Tasks
 * **UniversalConstructor**: Bootstraps any list of Tasks into a working Constructor
+* **Hydrogen atom constructors**: Excitation, deexcitation and two-atom collisions
 * **Demo scripts**:
 
   * `demo.py` – shows every constructor in action
