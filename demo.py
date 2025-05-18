@@ -1,6 +1,9 @@
 import time
 import math
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+except ImportError:  # pragma: no cover - optional plotting
+    plt = None
 
 
 from ct_framework import (
@@ -36,6 +39,12 @@ from ct_framework import (
     # Lorentz-force imports
     FieldSubstrate,
     lorentz_coupling_fn,
+    # Hydrogen imports
+    HYDROGEN_GROUND,
+    HYDROGEN_EXCITED,
+    HYDROGEN_MOLECULE,
+    HydrogenAtomConstructor,
+    HydrogenInteractionConstructor,
 )
 
 
@@ -194,13 +203,16 @@ def demo_2d_orbit(integrator, steps=100):
         sat = integrator.apply(sat)[0]
         xs.append(sat.x)
         ys.append(sat.y)
-    plt.figure(figsize=(5, 5))
-    plt.plot(xs, ys, "-", lw=1)
-    plt.scatter([0], [0], color="red", s=30, label="Center")
-    plt.axis("equal")
-    plt.title("2D Orbit")
-    plt.legend()
-    plt.show()
+    if plt is None:
+        print("matplotlib not available; skipping 2D orbit plot.")
+    else:
+        plt.figure(figsize=(5, 5))
+        plt.plot(xs, ys, "-", lw=1)
+        plt.scatter([0], [0], color="red", s=30, label="Center")
+        plt.axis("equal")
+        plt.title("2D Orbit")
+        plt.legend()
+        plt.show()
     print()
 
 
@@ -265,6 +277,31 @@ def demo_lorentz_force():
     print()
 
 
+def demo_hydrogen_atom():
+    print("=== Hydrogen Atom Demo ===")
+    cons = HydrogenAtomConstructor()
+    h = Substrate("H", HYDROGEN_GROUND, energy=0.0)
+    excited = cons.perform(h)[0]
+    print("After excitation:", excited)
+    for w in cons.perform(excited):
+        print(" ", w)
+    print()
+
+
+def demo_hydrogen_collision():
+    print("=== Hydrogen Collision Demo ===")
+    hi = HydrogenInteractionConstructor()
+    h1 = Substrate("H1", HYDROGEN_GROUND, energy=3.0)
+    h2 = Substrate("H2", HYDROGEN_GROUND, energy=3.0)
+    result = hi.perform([h1, h2])[0]
+    for r in result:
+        print(" ", r)
+    low1 = Substrate("hA", HYDROGEN_GROUND, energy=1.0)
+    low2 = Substrate("hB", HYDROGEN_GROUND, energy=1.0)
+    print("Low energy outcome:", hi.perform([low1, low2])[0])
+    print()
+
+
 if __name__ == "__main__":
     demo_task_constructor()
     demo_action_constructor()
@@ -282,3 +319,5 @@ if __name__ == "__main__":
     demo_photon_emission_absorption()
     demo_coulomb_coupling()
     demo_lorentz_force()
+    demo_hydrogen_atom()
+    demo_hydrogen_collision()
