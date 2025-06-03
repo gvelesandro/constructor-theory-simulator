@@ -438,6 +438,137 @@ class TestCTFramework(unittest.TestCase):
         self.assertEqual(len(result), 2)
         self.assertEqual({s.attr for s in result}, {ctf.HYDROGEN_GROUND})
 
+    # 41. Backend registry functionality
+    def test_backend_registry(self):
+        # Create a new registry for testing
+        registry = ctf.BackendRegistry()
+        
+        # Create a simple test backend
+        test_backend = ctf.ElectromagnetismBackend(A("test_charge"), 2.0)
+        
+        # Register the backend
+        registry.register(test_backend)
+        
+        # Test retrieval
+        retrieved = registry.get_backend("electromagnetism")
+        self.assertEqual(retrieved.get_name(), "electromagnetism")
+        
+        # Test listing
+        backends = registry.list_backends()
+        self.assertIn("electromagnetism", backends)
+        
+        # Test getting all tasks
+        tasks = registry.get_all_tasks(["electromagnetism"])
+        self.assertEqual(len(tasks), 2)  # emission + absorption
+        self.assertTrue(all(isinstance(t, ctf.Task) for t in tasks))
+
+    # 42. Global registry default backends
+    def test_global_registry_defaults(self):
+        registry = ctf.get_global_registry()
+        expected_backends = [
+            "electromagnetism", 
+            "quantum_gravity", 
+            "hydrogen_atoms", 
+            "continuous_dynamics"
+        ]
+        
+        for backend_name in expected_backends:
+            self.assertIn(backend_name, registry.list_backends())
+            backend = registry.get_backend(backend_name)
+            self.assertIsInstance(backend, ctf.TaskOntologyBackend)
+            tasks = backend.get_tasks()
+            self.assertTrue(len(tasks) > 0)
+
+    # 43. UniversalConstructor with backends
+    def test_universal_constructor_with_backends(self):
+        uc = ctf.UniversalConstructor()
+        
+        # Test building from specific backends
+        em_constructor = uc.build_from_backends(["electromagnetism"])
+        self.assertIsInstance(em_constructor, ctf.Constructor)
+        
+        # Test with single backend
+        qg_backend = ctf.QuantumGravityBackend(A("mass"), 5.0)
+        qg_constructor = uc.build_with_backend(qg_backend)
+        self.assertIsInstance(qg_constructor, ctf.Constructor)
+        
+        # Test that tasks work
+        mass_sub = ctf.Substrate("m", A("mass"), energy=10.0)
+        worlds = qg_constructor.perform(mass_sub)
+        self.assertEqual(len(worlds), 2)  # mass + graviton
+
+    # 44. Backend task execution
+    def test_backend_task_execution(self):
+        # Test electromagnetism backend
+        em_backend = ctf.ElectromagnetismBackend(A("charge"), 3.0)
+        uc = ctf.UniversalConstructor()
+        em_constructor = uc.build_with_backend(em_backend)
+        
+        charge_sub = ctf.Substrate("e", A("charge"), energy=10.0)
+        worlds = em_constructor.perform(charge_sub)
+        self.assertEqual(len(worlds), 2)  # charge + photon
+        
+        # Find photon and test absorption
+        photon = next(w for w in worlds if w.attr == ctf.PHOTON)
+        absorbed = em_constructor.perform(photon)
+        self.assertEqual(len(absorbed), 1)
+        self.assertEqual(absorbed[0].attr, A("charge"))
+
+    # 45. Multiple backend combination
+    def test_multiple_backend_combination(self):
+        uc = ctf.UniversalConstructor()
+        
+        # Build constructor with multiple backends
+        multi_constructor = uc.build_from_backends([
+            "electromagnetism", 
+            "quantum_gravity"
+        ])
+        
+        # Test with charge substrate
+        charge_sub = ctf.Substrate("e", A("charge_site"), energy=20.0)
+        em_worlds = multi_constructor.perform(charge_sub)
+        self.assertEqual(len(em_worlds), 2)  # charge + photon
+        
+        # Test with mass substrate
+        mass_sub = ctf.Substrate("m", A("mass"), energy=15.0)
+        qg_worlds = multi_constructor.perform(mass_sub)
+        self.assertEqual(len(qg_worlds), 2)  # mass + graviton
+
+    # 46. Custom backend creation
+    def test_custom_backend_creation(self):
+        # Create a custom backend
+        class TestBackend(ctf.TaskOntologyBackend):
+            def get_tasks(self):
+                return [
+                    ctf.Task("test_task", A("test_in"), [(A("test_out"), 0, 0)])
+                ]
+            
+            def get_name(self) -> str:
+                return "test_backend"
+        
+        custom_backend = TestBackend()
+        uc = ctf.UniversalConstructor()
+        custom_constructor = uc.build_with_backend(custom_backend)
+        
+        test_sub = ctf.Substrate("test", A("test_in"), energy=1.0)
+        result = custom_constructor.perform(test_sub)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].attr, A("test_out"))
+
+    # 47. Backend error handling
+    def test_backend_error_handling(self):
+        registry = ctf.BackendRegistry()
+        
+        # Test getting non-existent backend
+        with self.assertRaises(ValueError):
+            registry.get_backend("non_existent")
+        
+        # Test that error message contains backend name
+        try:
+            registry.get_backend("missing_backend")
+        except ValueError as e:
+            self.assertIn("missing_backend", str(e))
+
 
 if __name__ == "__main__":
     unittest.main()

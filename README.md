@@ -21,11 +21,13 @@ A **Python implementation** of David Deutsch’s Constructor Theory framework, e
   * Lorentz-force (2D) for charged particles in a magnetic field
 * **Quantum-Gravity & Electromagnetism**: Graviton & Photon emission/absorption Tasks
 * **UniversalConstructor**: Bootstraps any list of Tasks into a working Constructor
+* **Pluggable Backend Architecture**: Modular task ontologies for different physics domains
 * **Hydrogen atom constructors**: Excitation, deexcitation and two-atom collisions
 * **Demo scripts**:
 
   * `demo.py` – shows every constructor in action
   * `bootstrap_demo.py` – elegant self-replication via the UniversalConstructor
+  * `backend_demo.py` – demonstrates the pluggable backend system
 
 ---
 
@@ -54,6 +56,7 @@ python -m unittest ct_tests.py
 ```bash
 python demo.py
 python bootstrap_demo.py
+python backend_demo.py
 ```
 
 > **Note:** If you don’t have `matplotlib`, the demos will still run; plots will simply be skipped with a warning.
@@ -93,6 +96,49 @@ restored = em_cons.perform(photon)[0]
 print(restored)
 # => A:charge_site(E=20.0,Q=0,t=2,F=charge_site)
 ```
+
+## 🔌 Pluggable Backend System
+
+The framework now supports a modular backend architecture for different task ontologies:
+
+```python
+from ct_framework import (
+    UniversalConstructor, Substrate, Attribute,
+    ElectromagnetismBackend, QuantumGravityBackend
+)
+
+# 1) Use individual physics backends
+uc = UniversalConstructor()
+
+# Pure electromagnetism
+em_constructor = uc.build_from_backends(["electromagnetism"])
+
+# Pure quantum gravity  
+qg_constructor = uc.build_from_backends(["quantum_gravity"])
+
+# 2) Combine multiple backends
+unified_constructor = uc.build_from_backends([
+    "electromagnetism", 
+    "quantum_gravity", 
+    "hydrogen_atoms"
+])
+
+# 3) Create custom backends
+class CustomPhysicsBackend:
+    def get_tasks(self):
+        return [/* your custom tasks */]
+    
+    def get_name(self):
+        return "custom_physics"
+
+# 4) Available built-in backends:
+# - "electromagnetism": photon emission/absorption
+# - "quantum_gravity": graviton emission/absorption  
+# - "hydrogen_atoms": H excitation/deexcitation
+# - "continuous_dynamics": integrator tasks
+```
+
+Run `python backend_demo.py` to see the full backend system in action!
 
 ---
 
