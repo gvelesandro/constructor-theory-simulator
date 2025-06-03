@@ -712,18 +712,99 @@ def lorentz_coupling_fn(subs: List[Substrate]) -> List[List[Substrate]]:
     return [[p_new, f_new]]
 
 
-# ── 12. Universal Constructor ────────────────────────────────────────────
+# ── 12. Task Ontology Backend System ────────────────────────────────────
+
+from abc import ABC, abstractmethod
+
+
+class TaskOntologyBackend(ABC):
+    """
+    Base class for pluggable task ontology backends.
+    Each backend provides a specific domain of physics tasks.
+    """
+    
+    @abstractmethod
+    def get_tasks(self) -> List[Task]:
+        """Return the list of tasks provided by this backend."""
+        pass
+    
+    @abstractmethod
+    def get_name(self) -> str:
+        """Return the name of this backend."""
+        pass
+    
+    def get_description(self) -> str:
+        """Return a description of this backend."""
+        return f"{self.get_name()} task ontology backend"
+
+
+class BackendRegistry:
+    """Registry for managing task ontology backends."""
+    
+    def __init__(self):
+        self._backends: Dict[str, TaskOntologyBackend] = {}
+    
+    def register(self, backend: TaskOntologyBackend):
+        """Register a backend with the registry."""
+        self._backends[backend.get_name()] = backend
+    
+    def get_backend(self, name: str) -> TaskOntologyBackend:
+        """Get a backend by name."""
+        if name not in self._backends:
+            raise ValueError(f"Backend '{name}' not found")
+        return self._backends[name]
+    
+    def list_backends(self) -> List[str]:
+        """List all registered backend names."""
+        return list(self._backends.keys())
+    
+    def get_all_tasks(self, backend_names: Optional[List[str]] = None) -> List[Task]:
+        """Get all tasks from specified backends (or all if none specified)."""
+        if backend_names is None:
+            backend_names = self.list_backends()
+        
+        tasks = []
+        for name in backend_names:
+            backend = self.get_backend(name)
+            tasks.extend(backend.get_tasks())
+        return tasks
+
+
+# Global backend registry
+_global_registry = BackendRegistry()
+
+
+def get_global_registry() -> BackendRegistry:
+    """Get the global backend registry."""
+    return _global_registry
+
+
+# ── 13. Universal Constructor ────────────────────────────────────────────
 
 
 class UniversalConstructor:
     """
     Builds a new Constructor from a list of Task objects at runtime.
+    Can work with individual tasks or task ontology backends.
     """
+    
+    def __init__(self, backend_registry: Optional[BackendRegistry] = None):
+        self.registry = backend_registry or get_global_registry()
 
     def build(self, program: List[Task]) -> Constructor:
+        """Build a Constructor from a list of Task objects."""
         return Constructor(program)
+    
+    def build_from_backends(self, backend_names: List[str]) -> Constructor:
+        """Build a Constructor using tasks from specified backends."""
+        tasks = self.registry.get_all_tasks(backend_names)
+        return Constructor(tasks)
+    
+    def build_with_backend(self, backend: TaskOntologyBackend) -> Constructor:
+        """Build a Constructor using tasks from a single backend."""
+        return Constructor(backend.get_tasks())
 
-# ── 13. Hydrogen Atom Constructors ─────────────────────────────────────
+# ── 14. Hydrogen Atom Constructors ─────────────────────────────────────
 
 # Hydrogen attributes
 HYDROGEN_GROUND = Attribute("H_ground")
@@ -801,3 +882,92 @@ class HydrogenInteractionConstructor(MultiConstructor):
     def __init__(self, bond_energy: float = 4.5):
         task = HydrogenCollisionTask(bond_energy)
         super().__init__([task])
+
+
+# ── 15. Built-in Task Ontology Backends ──────────────────────────────────
+
+
+class ElectromagnetismBackend(TaskOntologyBackend):
+    """Backend providing electromagnetic tasks (photon emission/absorption)."""
+    
+    def __init__(self, charge_attr: Attribute, energy: float = 1.0):
+        self.charge_attr = charge_attr
+        self.energy = energy
+    
+    def get_tasks(self) -> List[Task]:
+        return [
+            PhotonEmissionTask(self.charge_attr, emission_energy=self.energy),
+            PhotonAbsorptionTask(self.charge_attr, absorption_energy=self.energy),
+        ]
+    
+    def get_name(self) -> str:
+        return "electromagnetism"
+
+
+class QuantumGravityBackend(TaskOntologyBackend):
+    """Backend providing quantum gravity tasks (graviton emission/absorption)."""
+    
+    def __init__(self, mass_attr: Attribute, energy: float = 1.0):
+        self.mass_attr = mass_attr
+        self.energy = energy
+    
+    def get_tasks(self) -> List[Task]:
+        return [
+            GravitonEmissionTask(self.mass_attr, emission_energy=self.energy),
+            GravitonAbsorptionTask(self.mass_attr, absorption_energy=self.energy),
+        ]
+    
+    def get_name(self) -> str:
+        return "quantum_gravity"
+
+
+class HydrogenBackend(TaskOntologyBackend):
+    """Backend providing hydrogen atom tasks (excitation/deexcitation)."""
+    
+    def __init__(self, energy_gap: float = 10.2):
+        self.energy_gap = energy_gap
+    
+    def get_tasks(self) -> List[Task]:
+        return [
+            HydrogenExcitationTask(energy_gap=self.energy_gap),
+            HydrogenDeexcitationTask(energy_gap=self.energy_gap),
+        ]
+    
+    def get_name(self) -> str:
+        return "hydrogen_atoms"
+
+
+class ContinuousDynamicsBackend(TaskOntologyBackend):
+    """Backend providing continuous dynamics tasks (integrators)."""
+    
+    def get_tasks(self) -> List[Task]:
+        return [
+            DynamicsTask(),
+            RK4Task(),
+            SymplecticEulerTask(),
+            Dynamics2DTask(),
+            RK42DTask(),
+            SymplecticEuler2DTask(),
+        ]
+    
+    def get_name(self) -> str:
+        return "continuous_dynamics"
+
+
+# Auto-register built-in backends with default parameters
+def _register_default_backends():
+    """Register default backends with the global registry."""
+    registry = get_global_registry()
+    
+    # Default attribute types for standard backends
+    CHARGE = Attribute("charge_site")
+    MASS = Attribute("mass")
+    
+    registry.register(ElectromagnetismBackend(CHARGE, energy=5.0))
+    registry.register(QuantumGravityBackend(MASS, energy=3.0))
+    registry.register(HydrogenBackend(energy_gap=10.2))
+    registry.register(ContinuousDynamicsBackend())
+
+
+# Register default backends on module import
+_register_default_backends()
