@@ -569,6 +569,201 @@ class TestCTFramework(unittest.TestCase):
         except ValueError as e:
             self.assertIn("missing_backend", str(e))
 
+    # 48. Test __repr__ methods for coverage
+    def test_attribute_repr(self):
+        attr = A("test_attr")
+        repr_str = repr(attr)
+        self.assertIn("test_attr", repr_str)
+        self.assertIn("〈", repr_str)
+        self.assertIn("〉", repr_str)
+
+    # 49. Test Substrate __repr__ method
+    def test_substrate_repr(self):
+        s = ctf.Substrate("test_sub", A("test_attr"), energy=5.0, charge=2, clock=3)
+        repr_str = repr(s)
+        self.assertIn("test_sub", repr_str)
+        self.assertIn("test_attr", repr_str)
+        self.assertIn("E=5.0", repr_str)
+        self.assertIn("Q=2", repr_str)
+        self.assertIn("t=3", repr_str)
+
+    # 50. Test Task.apply early return for impossible tasks
+    def test_task_apply_impossible(self):
+        task = ctf.Task("test", A("input"), [(A("output"), 0, 0)])
+        wrong_substrate = ctf.Substrate("wrong", A("different"), energy=1.0)
+        result = task.apply(wrong_substrate)
+        self.assertEqual(result, [])
+
+    # 51. Test Task.apply energy constraint (negative energy result)
+    def test_task_apply_negative_energy(self):
+        # Create a task that would result in negative energy
+        task = ctf.Task("drain", A("source"), [(A("empty"), -10.0, 0)])
+        low_energy_sub = ctf.Substrate("low", A("source"), energy=5.0)
+        result = task.apply(low_energy_sub)
+        # Should skip the output that would result in negative energy
+        self.assertEqual(len(result), 0)
+
+    # 52. Test Constructor early return for no matching tasks  
+    def test_constructor_no_matching_tasks(self):
+        task = ctf.Task("specific", A("specific_input"), [(A("output"), 0, 0)])
+        cons = ctf.Constructor([task])
+        unmatched_sub = ctf.Substrate("unmatched", A("different_input"), energy=1.0)
+        result = cons.perform(unmatched_sub)
+        # Should return the original substrate unchanged
+        self.assertEqual(len(result), 1)
+        self.assertIs(result[0], unmatched_sub)
+
+    # 53. Test SwapConstructor error handling
+    def test_swap_constructor_error(self):
+        a = ctf.Substrate("a", A("type1"), 1.0, fungible_id="id1")
+        b = ctf.Substrate("b", A("type2"), 1.0, fungible_id="id2")
+        
+        # Should raise ValueError for non-fungible substrates
+        with self.assertRaises(ValueError) as cm:
+            ctf.SwapConstructor.swap(a, b)
+        self.assertIn("not fungible", str(cm.exception))
+
+    # 54. Test plot_phase_space (covered by existing test or matplotlib absence)
+    def test_plot_phase_space_simple(self):
+        # Simple test that just ensures the function can be called
+        cs1 = ctf.ContinuousSubstrate("test", 0.0, 1.0, mass=1.0, potential_fn=lambda x: 0.0, dt=0.1)
+        cs2 = ctf.ContinuousSubstrate("test", 0.1, 0.9, mass=1.0, potential_fn=lambda x: 0.0, dt=0.1) 
+        # This should not raise an error
+        try:
+            ctf.plot_phase_space({"test": [cs1, cs2]})
+        except ImportError:
+            # This path is covered when matplotlib is not available
+            pass
+
+    # 58. Test plot_phase_space with matplotlib available
+    @unittest.skipUnless(True, "matplotlib is now available")  # Always run since we installed it
+    def test_plot_phase_space_matplotlib(self):
+        import matplotlib.pyplot as plt
+        # Mock plt.show to prevent actual display
+        original_show = plt.show
+        plt.show = lambda: None
+        
+        try:
+            cs1 = ctf.ContinuousSubstrate("traj", 0.0, 1.0, mass=1.0, potential_fn=lambda x: 0.0, dt=0.1)
+            cs2 = ctf.ContinuousSubstrate("traj", 0.1, 0.9, mass=1.0, potential_fn=lambda x: 0.0, dt=0.1)
+            # This should exercise the matplotlib code path
+            ctf.plot_phase_space({"test_trajectory": [cs1, cs2]})
+        finally:
+            plt.show = original_show
+
+    # 68. Test plot_phase_space ImportError case by mocking
+    def test_plot_phase_space_import_error(self):
+        import sys
+        import io
+        from unittest.mock import patch
+        
+        # Capture print output
+        captured_output = io.StringIO()
+        
+        with patch('builtins.__import__', side_effect=ImportError):
+            with patch('sys.stdout', captured_output):
+                cs1 = ctf.ContinuousSubstrate("test", 0.0, 1.0, mass=1.0, potential_fn=lambda x: 0.0, dt=0.1)
+                # This should trigger the ImportError path
+                ctf.plot_phase_space({"test": [cs1]})
+        
+        # Check that the expected message was printed
+        output = captured_output.getvalue()
+        self.assertIn("matplotlib not available", output)
+
+    # 55. Test continuous dynamics task early returns
+    def test_dynamics_task_impossible(self):
+        # Test DynamicsTask with wrong substrate type
+        task = ctf.DynamicsTask()
+        wrong_sub = ctf.Substrate("wrong", A("not_continuous"), energy=1.0)
+        result = task.apply(wrong_sub)
+        self.assertEqual(result, [])
+
+    # 56. Test RK4Task impossible case
+    def test_rk4_task_impossible(self):
+        task = ctf.RK4Task()
+        wrong_sub = ctf.Substrate("wrong", A("not_continuous"), energy=1.0)
+        result = task.apply(wrong_sub)
+        self.assertEqual(result, [])
+
+    # 57. Test SymplecticEulerTask impossible case
+    def test_symplectic_euler_impossible(self):
+        task = ctf.SymplecticEulerTask()
+        wrong_sub = ctf.Substrate("wrong", A("not_continuous"), energy=1.0)
+        result = task.apply(wrong_sub)
+        self.assertEqual(result, [])
+
+    # 59. Test 2D dynamics tasks impossible cases
+    def test_dynamics2d_task_impossible(self):
+        task = ctf.Dynamics2DTask()
+        wrong_sub = ctf.Substrate("wrong", A("not_2d"), energy=1.0)
+        result = task.apply(wrong_sub)
+        self.assertEqual(result, [])
+
+    # 60. Test RK42DTask impossible case
+    def test_rk42d_task_impossible(self):
+        task = ctf.RK42DTask()
+        wrong_sub = ctf.Substrate("wrong", A("not_2d"), energy=1.0)
+        result = task.apply(wrong_sub)
+        self.assertEqual(result, [])
+
+    # 61. Test SymplecticEuler2DTask impossible case
+    def test_symplectic_euler2d_impossible(self):
+        task = ctf.SymplecticEuler2DTask()
+        wrong_sub = ctf.Substrate("wrong", A("not_2d"), energy=1.0)
+        result = task.apply(wrong_sub)
+        self.assertEqual(result, [])
+
+    # 62. Test PhotonEmissionTask with carry_residual=True
+    def test_photon_emission_carry_residual(self):
+        ELEC = A("charge_site")
+        emit = ctf.PhotonEmissionTask(ELEC, emission_energy=5.0, carry_residual=True)
+        cons = ctf.Constructor([emit])
+        s0 = ctf.Substrate("S", ELEC, energy=20.0)
+        worlds = cons.perform(s0)
+        self.assertEqual(len(worlds), 2)
+        # Find the photon - it should carry the original energy
+        photon = next(w for w in worlds if w.attr == ctf.PHOTON)
+        self.assertEqual(photon.energy, 20.0)  # Original energy carried
+
+    # 63. Test EMConstructor
+    def test_em_constructor(self):
+        ELEC = A("charge")
+        em_cons = ctf.EMConstructor(ELEC, ΔE=3.0)
+        charge_sub = ctf.Substrate("e", ELEC, energy=10.0)
+        worlds = em_cons.perform(charge_sub)
+        self.assertEqual(len(worlds), 2)  # charge + photon
+
+    # 64. Test BackendRegistry get_all_tasks with None
+    def test_backend_registry_get_all_tasks_none(self):
+        registry = ctf.BackendRegistry()
+        em_backend = ctf.ElectromagnetismBackend(A("charge"), 2.0)
+        registry.register(em_backend)
+        
+        # Test with None parameter (should get all)
+        all_tasks = registry.get_all_tasks(None)
+        self.assertTrue(len(all_tasks) > 0)
+
+    # 65. Test UniversalConstructor.build method directly
+    def test_universal_constructor_build(self):
+        uc = ctf.UniversalConstructor()
+        task = ctf.Task("test", A("in"), [(A("out"), 0, 0)])
+        cons = uc.build([task])
+        self.assertIsInstance(cons, ctf.Constructor)
+
+    # 66. Test TaskOntologyBackend.get_description 
+    def test_backend_get_description(self):
+        em_backend = ctf.ElectromagnetismBackend(A("charge"), 2.0)
+        description = em_backend.get_description()
+        self.assertIn("electromagnetism", description)
+        self.assertIn("backend", description)
+
+    # 67. Test HydrogenDeexcitationTask impossible case
+    def test_hydrogen_deexcitation_impossible(self):
+        task = ctf.HydrogenDeexcitationTask(energy_gap=10.2)
+        wrong_sub = ctf.Substrate("wrong", A("not_hydrogen"), energy=1.0)
+        result = task.apply(wrong_sub)
+        self.assertEqual(result, [])
+
 
 if __name__ == "__main__":
     unittest.main()
