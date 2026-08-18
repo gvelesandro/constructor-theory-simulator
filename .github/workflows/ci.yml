@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python-version }}, ${{ matrix.matplotlib && 'with matplotlib' || 'no optional deps' }})
+    runs-on: ubuntu-latest
+    env:
+      MPLBACKEND: Agg
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        matplotlib: [false, true]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install optional dependencies
+        if: matrix.matplotlib
+        run: pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: python -m unittest ct_tests.py -v
+
+      - name: Run demos
+        run: |
+          python demo.py
+          python bootstrap_demo.py
+          python backend_demo.py

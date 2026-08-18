@@ -1,2 +1,5 @@
 fix.py
 __pycache__/
+.coverage
+coverage.xml
+htmlcov/

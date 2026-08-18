@@ -636,9 +636,8 @@ class TestCTFramework(unittest.TestCase):
             pass
 
     # 58. Test plot_phase_space with matplotlib available
-    @unittest.skipUnless(True, "matplotlib is now available")  # Always run since we installed it
+    @unittest.skipUnless(HAS_PLT, "matplotlib not installed")
     def test_plot_phase_space_matplotlib(self):
-        import matplotlib.pyplot as plt
         # Mock plt.show to prevent actual display
         original_show = plt.show
         plt.show = lambda: None
@@ -653,22 +652,21 @@ class TestCTFramework(unittest.TestCase):
 
     # 68. Test plot_phase_space ImportError case by mocking
     def test_plot_phase_space_import_error(self):
-        import sys
         import io
+        import sys
+        from contextlib import redirect_stdout
         from unittest.mock import patch
-        
-        # Capture print output
+
+        cs1 = ctf.ContinuousSubstrate("test", 0.0, 1.0, mass=1.0, potential_fn=lambda x: 0.0, dt=0.1)
         captured_output = io.StringIO()
-        
-        with patch('builtins.__import__', side_effect=ImportError):
-            with patch('sys.stdout', captured_output):
-                cs1 = ctf.ContinuousSubstrate("test", 0.0, 1.0, mass=1.0, potential_fn=lambda x: 0.0, dt=0.1)
-                # This should trigger the ImportError path
+
+        # A None entry makes `import matplotlib.pyplot` raise, leaving every
+        # other import alone.
+        with patch.dict(sys.modules, {"matplotlib": None, "matplotlib.pyplot": None}):
+            with redirect_stdout(captured_output):
                 ctf.plot_phase_space({"test": [cs1]})
-        
-        # Check that the expected message was printed
-        output = captured_output.getvalue()
-        self.assertIn("matplotlib not available", output)
+
+        self.assertIn("matplotlib not available", captured_output.getvalue())
 
     # 55. Test continuous dynamics task early returns
     def test_dynamics_task_impossible(self):

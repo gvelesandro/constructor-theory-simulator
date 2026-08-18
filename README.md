@@ -35,7 +35,7 @@ A **Python implementation** of David Deutsch’s Constructor Theory framework, e
 
 ### Prerequisites
 
-* Python 3.8+
+* Python 3.9+
 * (Optional) `matplotlib` for phase-space plots
 
 ### Installation
