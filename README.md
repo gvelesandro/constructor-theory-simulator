@@ -138,6 +138,8 @@ class CustomPhysicsBackend:
 # - "continuous_dynamics": integrator tasks
 ```
 
+Custom backends are registered in a `BackendRegistry` before building, as shown in `backend_demo.py`.
+
 Run `python backend_demo.py` to see the full backend system in action!
 
 ---
